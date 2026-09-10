@@ -5,7 +5,53 @@ description: Answer questions from an existing Markdown LLM wiki using complete 
 
 # Query an LLM wiki
 
-Read [runtime.md](references/runtime.md) and [operations.md](references/operations.md).
+## Start immediately from this loaded skill
+
+The launch contract below is sufficient for the first inspect and query. Do not
+load runtime.md or operations.md as a prerequisite. They are supplementary detail.
+Use the installed host section above if present; a source checkout uses Node.
+
+For Node, use the host's bundled Node executable (or `node` from its supplied PATH),
+followed by this loaded skill's script. With an already verified granted root:
+
+`node "<loaded-query-skill>/scripts/wiki.mjs" --root "<verified-project>" --input '{"action":"inspect"}'`
+
+When inspect returns next:query, preserve the original question and immediately run:
+
+`node "<loaded-query-skill>/scripts/wiki.mjs" --root "<same-project>" --input '{"action":"query","question":"<original question>"}'`
+
+Pass encoded JSON or structured stdin (`--input -`), never raw user text as shell
+code. Read complete JSON. Follow `hits`, `context`, `citations`, `findings` and
+`context_truncated`; exact evidence is `citations[].shadow.passages[]`, not `shadow`.
+Read full context with `{"action":"read","connection":"<inspected ID>","page":"<returned page>"}`
+using the same entry and root. Refine query terms to get each claim's exact reference.
+For additional request shapes run the bundled `wiki.mjs --help`; it needs no root
+and does not read reference files. Never write probes, refresh or set up from Query.
+
+For Vault packages instead call `run_skill_script` with
+`{"skill_name":"query-llm-wiki","script_name":"wiki","args":{"action":"inspect","root":"<known vault-relative project>"}}`.
+Then use the same wrapper with action query and question. There is no Node call.
+
+If an optional reference read times out, retain the question and continue from this
+loaded contract and executable help. Do not loop on the failed documentation read.
+A timeout is not a permission grant: an access-denied result must not be retried
+through a different tool. Missing project access still requires its precise grant.
+
+For Node calls in both skills, the runtime bounds filesystem reads and supervises
+its worker inside the existing sandbox. A filesystem timeout is an incomplete
+operation, never proof of missing knowledge. Read `error.code/message/details`;
+`runtime_read_timeout` identifies the affected path. Do not retry with `2>&1`,
+`; echo EXIT:$?`, `cat`, or a temporary-file redirect. Do not change the host or its
+grants. For a read-only query, retain the question and retry the exact request at
+most once; if it blocks again, report the affected file and the incomplete scope.
+A connection-scoped query may answer a narrower, explicitly disclosed question;
+never silently omit an inaccessible connection. For an interrupted mutation, inspect
+current state before retrying: `partial_changes_possible` is not a rollback.
+The same protection applies to the separate HTML answer helper. Never claim an
+answer file was generated or opened after a failed export.
+
+## Project and evidence
+
 Use this package's current entrypoint and request syntax. Node inspection accepts
 inline JSON without a temporary request file or additional folder grant.
 Reuse the exact project root already verified in the current task/session, including

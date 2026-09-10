@@ -85,3 +85,25 @@ must be assessed in context. Empty lists carry `empty_reason`; missing or damage
 identity history still permits current unpersisted excerpts. Only maintain repairs
 the history/cache. Read the full page when the supplied context is insufficient,
 but do not infer SQLite failure merely from a missing lexical match.
+
+Read-only collection/overview checks: `collection.assess` reads observed fields,
+values and individual failures, including before project setup. In a project,
+`source` selects an assigned original collection. `participation.overview` accepts
+`field` and optional `connections`, uses registered boolean participation and
+actual readable scopes, and explains empty results. `query.filters.participates`
+is the registered field name. `published.check` accepts the existing MkDocs
+`navigation` YAML and reports drift against authoritative document fields.
+Preparation, registration, editing and rollback belong to maintain.
+
+For Node calls in both skills, the runtime bounds filesystem reads and supervises
+its worker inside the existing sandbox. A filesystem timeout is an incomplete
+operation, never proof of missing knowledge. Read `error.code/message/details`;
+`runtime_read_timeout` identifies the affected path. Do not retry with `2>&1`,
+`; echo EXIT:$?`, `cat`, or a temporary-file redirect. Do not change the host or its
+grants. For a read-only query, retain the question and retry the exact request at
+most once; if it blocks again, report the affected file and the incomplete scope.
+A connection-scoped query may answer a narrower, explicitly disclosed question;
+never silently omit an inaccessible connection. For an interrupted mutation, inspect
+current state before retrying: `partial_changes_possible` is not a rollback.
+The same protection applies to the separate HTML answer helper. Never claim an
+answer file was generated or opened after a failed export.

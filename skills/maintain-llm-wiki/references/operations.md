@@ -43,6 +43,13 @@ editor update. Ask no additional setup question; explain that an already-open HT
 tab needs reload/reopen to load the replacement. Query remains read-only and reports
 an update requirement instead of running editor.
 
+For host profiles with an explicit file-opening tool, editor.preflight returns
+handoff.standalone.status:host_action_required and handoff.standalone.open with
+tool and arguments. Execute that request through the actual host tool; returning
+its JSON or a Chat link does not open anything. A server status of unavailable is
+separate from a valid standalone file handoff. The runtime never claims browser
+verification from that request. Missing/foreign/old starters yield no open request.
+
 The editor action returns page plus project_root, entry_path and entry_uri. These
 identify the canonical starter for that configured project. Use the returned concrete
 path/URI with the host's actual link/open tool; do not replace it with a similarly
@@ -381,6 +388,28 @@ source_coverage_unverified findings “expected” and declare the ingest comple
 
 ## Collaboration and Obsidian
 
+On Node, `sync` is resumable too. For EACH connection, execute every exact
+`next_request` until it is null; retain all returned conflicts and pending findings.
+`sync_complete` covers transfers only; graph and shadow stages also need their
+continuations. `complete:false` must be explained even when the process exits 0.
+A `blocked` result has no automatic next step: retry its `resume_request` at most
+once, then report the named unresolved file if it blocks again. Never continue the
+maintenance as complete, skip clearance, edit the checkpoint or broaden access.
+A stale cursor needs a fresh sync; saved Markdown and review history remain intact.
+
+Node controls: `budget_ms` (100–20000, default 20000), `read_timeout_ms`
+(25–15000, default 15000, capped below the call budget), `max_steps`
+(1–256, default 64). Normal runs use defaults. A private derived checkpoint at
+`.llmwiki/sync/<connection-hash>.json` is bound to the exact returned cursor,
+project instance, settings and folder bindings; it expires after 24 hours.
+Completed units are reused only after their file and directory proofs still match.
+All writes keep the existing clearance, immutable journal, author-chain and CAS
+checks. Pending/conflict findings may contain `detail_request`; read that request
+before continuing the sync. Then request each returned text field with
+`detail.field` and `detail.offset` until `next_offset:null`. Do not pass a summary
+as `conflict.resolve` input; it needs the full, current original conflict texts.
+Vault/browser sync retains its original single-call contract.
+
 Run `sync` before and after edits. It exchanges Markdown, baselines and immutable
 author events. It does not delete. `conflicts` preserve base/mine/theirs. `pending_details` names individual files and
 reasons (author_chain_missing/read_only/size_limit). Missing author chains also
@@ -468,6 +497,50 @@ Writes return graph or graph_error; a graph_error does not undo an already saved
 Maintain-only {"action":"source.monitor"} returns pairs for ALL connections and their
 assigned source roots, recursively. Each pair has plan.changes or an explicit error.
 Use its connection/source IDs for ingest. It plans, it does not claim ingestion.
+
+Node runs this action in bounded calls (default 20 seconds of reading, at most 128
+source files and 64 findings per response, below 32 KiB JSON). A single read has a
+2-second budget. The CLI runs a worker with the same Node executable and sandbox. After the first
+read timeout, the worker starts no further reads; it saves progress with the existing
+project grant and sends the result to its supervisor. The supervisor terminates the
+worker, drains JSON to stdout and exits. A 35-second watchdog terminates a worker
+that cannot return a saved checkpoint and reports an explicit failure.
+No software installation or host timeout/permission change is needed.
+
+Retain every response's `notes` and `pairs`, then execute the returned `next_request`
+verbatim until it is null. It includes action and the exact checkpoint `cursor`.
+Optional smaller budgets: `max_files` 1–256, `max_items` 1–128, `budget_ms` 100–20000,
+`read_timeout_ms` 25–5000 (capped to a quarter of the call budget). Normal runs use
+the defaults. A response can contain one fragment of a source pair; `plan.counts`
+counts only that fragment, `total_counts` the entire pair, `page_complete` its last
+fragment. Preserve advisories too. `monitor_item_too_large` identifies an item for
+separate reading and keeps the scan incomplete; it never silently drops a finding.
+
+- `scan_finished`: every connection/source task has been attempted.
+- `scan_complete`: finished without unreadable sources, notes or task errors.
+- `delivery_complete`: the last result fragment has been delivered.
+- `complete`: delivery and scan complete, with no outstanding source/note changes.
+  This monitor never performs ingestion, semantic review or acknowledgement.
+
+`progress` names counts and the current source. A timed-out source is retained as
+`unreadable` and the next call continues past it; `read_timeout`/`unresolved` identify
+the immediate interruption. Finish other findings, report unresolved originals,
+and start a fresh scan when those files become available. A missing binding or
+blocked note/plan task stays an explicit per-connection error.
+
+The only monitor write is the replaceable derived checkpoint
+`.llmwiki/source-monitor.json` (32 MiB limit; file names/digests/findings, no source
+bodies). Original folders, authored notes and review records are never changed.
+Cursors use its exact hash and are bound to project settings, device bindings and
+24-hour scan age. A concurrent call, changed settings or stale cursor produces
+`monitor_stale`: start a fresh scan without a cursor; never edit the checkpoint.
+Finish the entire inventory before comparison. `progress.phase` advances from
+`scan` to resumable `validate` to `compare`, each with a fresh call budget.
+Recheck names and file metadata to
+reject source drift; partial inventories cannot infer missing/unique rename states.
+Unreadable candidates prevent a confident rename. Ingest still rechecks exact source
+bytes before writing. A completed scan is an observation, not a filesystem lock.
+Vault uses the existing single-call contract without the Node checkpoint.
 
 ## Own Markdown notes and embedded images
 
@@ -724,3 +797,77 @@ available.
 
 `shadow.resolve` accepts `{action:"shadow.resolve",reference:"<passage.reference>"}`
 for a Query address, or `id` for a retained pin. Both are strictly read-only.
+
+## Existing collections, participation and scoped transfer
+
+`collection.assess` reads `folder` (default root) without changing files. It works
+before setup on the granted root, or on the selected connection's work folder;
+`source` selects an assigned read-only original folder. The result names every
+page, observed field/value, known vocabulary, duplicate identities/names and each
+read failure. Readers describe the selected folder; labels never grant access.
+
+`collection.upgrade`, `collection.map`, `published.adopt`, `sharing.move` and
+`ingest.group` use reviewable stages. Start with `step:"preview"`. Review the
+complete result and repeat the same inputs with `step:"prepare", expected:<token>`.
+For transfers also repeat the returned `at`. Preparation stores only a private
+plan. Show its exact changes before `step:"apply", id, approved:true`. A missing
+approval does not apply anything. `step:"decline", id` rejects an unstarted plan;
+`step:"status", id` inspects it. Resume the same ID after an interruption.
+A changed preimage, source, reader circle or required register blocks application.
+Never substitute a new expected hash to force an old approval through.
+
+- `collection.upgrade`: `folder, stage, author, changes:[{page,expected,text}]`.
+  Each named stage changes only Markdown in that folder and preserves identities,
+  original mirrors and provenance. `step:"rollback", id, approved:true` restores
+  the exact owned beforeimages. Later edits are reported as conflicts and retained;
+  other folders are not restored. A vocabulary still used by another document is
+  retained with register_in_use. Rollback can be resumed.
+- `collection.map`: `folder, author, mappings:[{field,to,values:[{from,to}]}]`.
+  Explicitly decide every observed field. `to:"keep"` retains a foreign field;
+  mapped fields require every observed value. Registered core fields or existing
+  extension definitions are valid targets. An unknown type can be retained with
+  `to:"type", inherit:true` and an identical from/to value; this registers the
+  inherited genus. Multiple type/class/status values require an explicit `value`
+  chosen from their mapped meanings. Comments and body text survive. Mapping
+  decisions and vocabulary changes are part of the same reversible stage.
+- `published.adopt`: `navigation, author` reads an existing MkDocs YAML `nav`
+  and `docs_dir` (default `docs`). It retains body text, paths and configuration,
+  writes registered `publication_group` and `publication_order` fields, and lists
+  unlisted pages. Unsupported navigation syntax is refused rather than guessed.
+  `published.check` with `navigation` reports later drift. Document fields are
+  authoritative after adoption; reconcile generator navigation with those fields.
+  Run the site's existing build and URL/link checks before approving a real site;
+  a file-preservation result alone does not prove production availability.
+- `participation.register`: `field:"x_<name>", label, author, expected` registers
+  a boolean in `schema/FIELDS.json` (expected null only when absent). Use neutral
+  names, without promises of privacy or access control. `participation.set` takes
+  `page,field,value:true|false,author,expected`. `participation.overview` takes
+  `field,connections`; it shows only currently readable participating pages and
+  explains an empty result. `query.filters.participates` accepts the registered
+  field name; normal relationship and counterevidence retrieval still applies.
+- `ingest.group`: `label, author, sources:[{source,path,description?,page?,expectedPage?,supplement?}]`
+  previews exact original hashes and readers. Prepare returns actual source-mirror
+  writes for review; each group is approved independently. Curation requests
+  (`write`, `patch`, `source.ingest`, `workflow.start/review/decide/finish`) include
+  `group:<approved id>` to retain their actual writes in that group's journal.
+  Existing semantic workflow gates remain mandatory. `ingest.take_back` takes
+  `id, approved:true`; it reverts owned writes, preserves later edits and other
+  groups, and never edits original files. A subsequent explicit sync archives matching
+  published afterimages and preserves changed remote versions as conflicts.
+  Immutable review/evidence history stays
+  available. A stored source mirror is still not completed semantic integration.
+- `sharing.move`: `page,target_connection,target_page,author` previews both
+  reader circles, readers gaining/losing access and the complete page. Approval
+  transfers one canonical identity between working wikis; sync remains the
+  explicit publication step for both connections. The original location becomes
+  a neutral, scoped redirect, resolved only with target access. Both stores retain
+  direction, author and timestamp. Linked local assets retain their bytes; source
+  representations require the same original connection at the destination.
+  Reverse a completed transfer with a new reviewed transfer in the other direction.
+
+Vault writes still use the enclosing transaction protocol: prepared/pending means
+resume that transaction before any other action. A text-only bridge may return
+`requires_host_copy` for a binary attachment, or `requires_host_move` to archive a
+newly created page during rollback. Perform only that exact scoped host operation,
+verify the requested digest, then resume the stage. Missing capabilities are an
+explicit incomplete result; never replace archiving with deletion.

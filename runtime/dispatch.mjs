@@ -1,3 +1,8 @@
+import {assessCollection,collectionUpgrade,mapCollection} from './collection.mjs';
+import {registerParticipation,setParticipation,overview} from './participation.mjs';
+import {adoptPublished} from './published.mjs';
+import {ingestGroup,recordGroupOperation} from './ingest-groups.mjs';
+import {transfer} from './sharing.mjs';
 import {decodePassage} from './passage-links.mjs';
 import {editorCitations} from './citations.mjs';
 import {refreshShadow,readShadow,pinQuote,resolveQuote,resolvePassage} from './shadow-project.mjs';
@@ -20,26 +25,27 @@ import {patchHead,parseDocument} from './core/document.mjs';
 import {reviews,sync,handle} from './review.mjs';
 import {requireThat} from './core/errors.mjs';
 
-async function integratedNotePlan(store){const plan=await planNotes(store),sessions=await workflow.sessions(store),reviewed=new Map(sessions.filter(s=>s.complete).flatMap(s=>[...s.outputs,...s.review.record.topics.pages].map(page=>[page,s.id])));for(const note of plan.changes)if(note.state!=='unreadable'&&note.assets.every(a=>a.state==='reviewed')&&reviewed.has(note.page)){note.state='unchanged';note.review_basis={workflow:reviewed.get(note.page)};}return {...plan,complete:plan.changes.every(n=>n.state==='unchanged'),counts:Object.fromEntries(Object.keys(plan.counts).map(s=>[s,plan.changes.filter(n=>n.state===s).length]))};}
+export async function integratedNotePlan(store){const plan=await planNotes(store),sessions=await workflow.sessions(store),reviewed=new Map(sessions.filter(s=>s.complete).flatMap(s=>[...s.outputs,...s.review.record.topics.pages].map(page=>[page,s.id])));for(const note of plan.changes)if(note.state!=='unreadable'&&note.assets.every(a=>a.state==='reviewed')&&reviewed.has(note.page)){note.state='unchanged';note.review_basis={workflow:reviewed.get(note.page)};}return {...plan,complete:plan.changes.every(n=>n.state==='unchanged'),counts:Object.fromEntries(Object.keys(plan.counts).map(s=>[s,plan.changes.filter(n=>n.state===s).length]))};}
 
-export const queryActions=['shadow.status','shadow.resolve','inspect','context','source.inventory','source.plan','source.read','read','query','graph','readiness','workflow.status','workflow.list','review.read'];
-export const actions=['shadow.rebuild','shadow.refresh','shadow.status','shadow.pin','shadow.resolve','intake.start','intake.decide','intake.status','wiki.initialize','note.plan','note.review','attachment.plan','attachment.review','attachment.rename','source.monitor','graph.refresh','metadata.repair','folder.create','document.move.plan','document.move.apply','wiki.flatten.plan','inspect','setup.draft','configure','settings','detach','editor','context','workspace.select','workspace.relocate','source.plan','source.missing','source.store','source.inventory','source.read','source.ingest','read','write','patch','query','graph','index','readiness','workflow.start','workflow.review','workflow.decide','workflow.finish','workflow.status','workflow.list','sync','conflict.resolve','review.read','review.respond'];
+export const queryActions=['published.check','collection.assess','participation.overview','shadow.status','shadow.resolve','inspect','context','source.inventory','source.plan','source.read','read','query','graph','readiness','workflow.status','workflow.list','review.read'];
+export const actions=['collection.assess','collection.upgrade','collection.map','participation.register','participation.set','participation.overview','published.adopt','published.check','ingest.group','ingest.take_back','sharing.move','shadow.rebuild','shadow.refresh','shadow.status','shadow.pin','shadow.resolve','intake.start','intake.decide','intake.status','wiki.initialize','note.plan','note.review','attachment.plan','attachment.review','attachment.rename','source.monitor','graph.refresh','metadata.repair','folder.create','document.move.plan','document.move.apply','wiki.flatten.plan','inspect','setup.draft','configure','settings','detach','editor','context','workspace.select','workspace.relocate','source.plan','source.missing','source.store','source.inventory','source.read','source.ingest','read','write','patch','query','graph','index','readiness','workflow.start','workflow.review','workflow.decide','workflow.finish','workflow.status','workflow.list','sync','conflict.resolve','review.read','review.respond'];
 export async function dispatch(root,request,options={}){
  const readOnly=root.writable===false;
  requireThat(!readOnly||queryActions.includes(request.action),'read-only','The query skill is read-only. Setup and changes belong to maintain-llm-wiki.');
  if(request.action==='graph.refresh')return exportProjectGraph(root,options);
  const result=await executeAction(root,request,options);
+ const stagedMutation=['collection.upgrade','collection.map','published.adopt','sharing.move','ingest.group','ingest.take_back'].includes(request.action)&&['applying','applied','rolling_back','rolled_back'].includes(result.state)&&(['apply','rollback'].includes(request.step)||request.action==='ingest.take_back');
  if(readOnly&&request.action==='inspect'){
    result.runtime.actions=queryActions;
    if(result.project){result.next='query';return result;}
    let knowledge=false;for(const prefix of ['wiki',''])try{knowledge ||= (await root.list(prefix,{recursive:false})).some(e=>e.kind==='file'&&/\.md$/i.test(e.path));}catch(error){if(!['ENOENT','ENOTDIR'].includes(error.code))throw error;}
    return {next:'locate_project',knowledge_present:knowledge,reason:'No project configuration at this root. This does not mean knowledge is absent.',project_hint:result.project_hint??null,runtime:result.runtime};
  }
- if(!readOnly&&['wiki.initialize','configure','settings','detach','editor','write','patch','metadata.repair','document.move.apply','source.ingest','source.missing','index','workflow.finish','sync','conflict.resolve'].includes(request.action)&&await root.read('llmwiki.project.json')){
+ if(!readOnly&&(stagedMutation||request.action==='participation.set'||['wiki.initialize','configure','settings','detach','editor','write','patch','metadata.repair','document.move.apply','source.ingest','source.missing','index','workflow.finish','sync','conflict.resolve'].includes(request.action))&&await root.read('llmwiki.project.json')){
    try{const snapshot=await exportProjectGraph(root,options);result.graph={revision:snapshot.revision,generated_at:snapshot.generated_at,complete:snapshot.complete};}
    catch(error){result.graph_error={code:error.code??'graph',message:error.message};}
  }
- if(!readOnly&&['write','patch','index','source.ingest','document.move.apply','workflow.finish','sync'].includes(request.action)&&await root.read('llmwiki.project.json')){
+ if(!readOnly&&(stagedMutation||request.action==='participation.set'||['write','patch','index','source.ingest','document.move.apply','workflow.finish','sync'].includes(request.action))&&await root.read('llmwiki.project.json')){
   try{result.shadow=await executeAction(root,{action:'shadow.refresh',...(request.connection?{connection:request.connection}:{}),...(['write','patch'].includes(request.action)&&request.connection&&result.page?{paths:[result.page]}:{})},options);}catch(error){result.shadow={complete:false,code:error.code??'shadow',message:error.message};}
  }
  return result;
@@ -53,6 +59,7 @@ async function executeAction(root,request,{bindings={},extract,editorHTML=null}=
   for(const link of p.connections){try{const c=await project.context(root,link.id,{bindings});for(const source of c.sources){if(!source.store){pairs.push({connection:link.id,wiki:link.wiki,source:source.id,error:source.error});continue;}try{pairs.push({connection:link.id,wiki:link.wiki,source:source.id,plan:await plan(c.work,source,{})});}catch(error){pairs.push({connection:link.id,wiki:link.wiki,source:source.id,error:{code:error.code,message:error.message}});}}}catch(error){pairs.push({connection:link.id,wiki:link.wiki,error:{code:error.code,message:error.message}});}}
   return {pairs,notes,complete:!pairs.some(p=>p.error)&&notes.every(n=>n.plan?.complete),next:'Process every new, changed and repair_required source in its assigned wiki; preserve unchanged originals. Review every new, changed or dependency_changed own note with note.review; do not infer semantic completion from a graph refresh.'};
  }
+ if(action==='collection.assess'&&!await root.read('llmwiki.project.json'))return assessCollection(root,args);
  if(action==='workspace.relocate')return relocate(root,{...args,connection},{bindings,editorHTML});
  if(action==='configure')return project.configure(root,args,{bindings,editorHTML});
  if(action==='setup.draft')return project.setupDraft(root,args.answers,args.expected);
@@ -60,11 +67,12 @@ async function executeAction(root,request,{bindings={},extract,editorHTML=null}=
  if(action==='detach')return project.detach(root,args.folder,args.expected,{editorHTML,bindings});
  if(action==='workspace.select')return project.selectWorkspace(root,connection,args.work);
  if(action==='editor'){const {project:p}=await project.load(root);requireThat(editorHTML,'editor','This host needs the packaged HTML asset.');return project.installEditor(root,p,editorHTML,{...args,bindings});}
- if(action==='query'||action==='graph'||action==='readiness'||action.startsWith('shadow.')){
+ if(action==='participation.overview'||action==='query'||action==='graph'||action==='readiness'||action.startsWith('shadow.')){
    const {project:p}=await project.load(root),target=action==='shadow.resolve'&&args.reference?decodePassage(args.reference):null;
    if(target){const marker=await root.read('.llmwiki/project-instance.json');requireThat(target.project===p.id&&target.instance===JSON.parse(marker?.text??'null')?.instance,'citation_scope','This passage belongs to another project instance.');}
    const selected=args.connections??(connection?[connection]:target?[target.connection]:p.connections.map(c=>c.id)),wikis=[],contexts=[],inaccessible=[];
-   for(const id of selected){requireThat(p.connections.some(c=>c.id===id),'connection','Select an existing connection.');try{const c=await project.context(root,id,{bindings,...(target?.connection===id?{work:target.work}:{})});contexts.push(c);if(!wikis.some(w=>w.id===c.wiki.id))wikis.push({id:c.wiki.id,label:c.wiki.label,path:c.wiki.path??c.wiki.id,connection:c.connection.id,work:c.workFolder.id,store:c.work});}catch(error){if(action!=='query'&&!action.startsWith('shadow.'))throw error;inaccessible.push({connection:id,code:error.code??'access',message:error.message});}}
+   for(const id of selected){requireThat(p.connections.some(c=>c.id===id),'connection','Select an existing connection.');try{const c=await project.context(root,id,{bindings,...(target?.connection===id?{work:target.work}:{})});contexts.push(c);if(!wikis.some(w=>w.id===c.wiki.id))wikis.push({id:c.wiki.id,label:c.wiki.label,path:c.wiki.path??c.wiki.id,connection:c.connection.id,work:c.workFolder.id,store:c.work});}catch(error){if(action!=='query'&&action!=='participation.overview'&&!action.startsWith('shadow.'))throw error;inaccessible.push({connection:id,code:error.code??'access',message:error.message});}}
+   if(action==='participation.overview'){const result=await overview(wikis,args.field);result.findings.push(...inaccessible.map(f=>({connection:f.connection,code:f.code})));result.complete&&=!inaccessible.length;return result;}
    if(action==='query'||action.startsWith('shadow.')){
     requireThat(wikis.length,'access','No selected wiki is currently accessible. Existing knowledge may still be present.',{findings:inaccessible});
     if(action==='shadow.resolve'){if(args.reference){const marker=await root.read('.llmwiki/project-instance.json');return resolvePassage(wikis,args.reference,{project:p.id,instance:JSON.parse(marker?.text??'null')?.instance});}return resolveQuote(wikis,args.id);}
@@ -88,7 +96,7 @@ async function executeAction(root,request,{bindings={},extract,editorHTML=null}=
     }
     const notes=[];for(const w of wikis){const plan=await integratedNotePlan(w.store),pending=plan.changes.filter(n=>n.state!=='unchanged');notes.push({wiki:w.id,...plan,pending});for(const n of pending)blocked_by.push({code:'note_'+n.state,wiki:w.id,page:n.page});}
     const differences=[];
-    for(const c of contexts){const files=new Set([...await c.work.list(''),...await c.remote.list('')].filter(e=>e.kind==='file'&&/\.md$/i.test(e.path)&&!e.path.split('/').some(p=>p.startsWith('.'))).map(e=>e.path));
+    for(const c of contexts){const files=new Set([...await c.work.list(''),...await c.remote.list('')].filter(e=>e.kind==='file'&&(e.path==='schema/FIELDS.json'||/\.md$/i.test(e.path))&&!e.path.split('/').some(p=>p.startsWith('.'))).map(e=>e.path));
       for(const page of files){const local=await c.work.read(page),remote=await c.remote.read(page);if(local?.sha256!==remote?.sha256)differences.push({wiki:c.wiki.id,connection:c.connection.id,page,local:local?.sha256??null,remote:remote?.sha256??null});}}
     const publication={synchronized:!differences.length,differences};if(!publication.synchronized)blocked_by.push({code:'publication_pending'});
     const originals=[];
@@ -102,6 +110,15 @@ async function executeAction(root,request,{bindings={},extract,editorHTML=null}=
    const graph=await buildGraph(wikis);return {nodes:graphProjection(graph).pages.map(p=>({key:p.key,wiki:p.wiki,page:p.path,title:p.head.title,type:p.head.type,id:p.head.id})),edges:graph.edges,findings:[...graph.failures,...graph.findings]};
  }
  const c=await project.context(root,connection,{bindings,work:args.work}),store=c.work;
+ if(args.group){requireThat(['write','patch','workflow.start','workflow.review','workflow.decide','workflow.finish','source.ingest'].includes(action),'group','This action cannot be recorded as group curation.');return recordGroupOperation(c,{...args,action},async overlay=>{const scoped=Object.create(root);scoped.substore=async(path,opts)=>path===c.workFolder.path?overlay:root.substore(path,opts);const {group,...next}=args;return executeAction(scoped,{action,connection,...next},{bindings:{...bindings,...(c.workFolder.path===null?{[c.workFolder.id]:overlay}:{})},extract,editorHTML});});}
+ if(action==='collection.assess'){if(args.source){const source=c.sources.find(s=>s.id===args.source);requireThat(source?.store,'access','Select an assigned readable source collection.');return assessCollection(source.store,{...args,readers:source.readers});}return assessCollection(store,{...args,readers:c.wiki.readers});}
+ if(action==='collection.upgrade')return collectionUpgrade(store,args);
+ if(action==='collection.map')return mapCollection(store,args);
+ if(action==='published.adopt'||action==='published.check')return adoptPublished(store,{...args,...(action==='published.check'?{step:'check'}:{})});
+ if(action==='participation.register')return registerParticipation(store,args);
+ if(action==='participation.set')return setParticipation(store,args);
+ if(action==='sharing.move')return transfer(root,c,args,{bindings});
+ if(action==='ingest.group'||action==='ingest.take_back'){const result=await ingestGroup(c,{...args,...(action==='ingest.take_back'?{step:'rollback'}:{})},{extract});if(['applied','rolled_back'].includes(result.state))await content.refreshIndex(store);return result;}
  if(action==='intake.start'){const source=c.sources.find(s=>s.id===(args.source??c.connection.default_source));requireThat(source,'source','Choose an assigned source folder.');return startIntake(store,args,source.id);}
  if(action==='intake.decide')return decideIntake(store,args);
  if(action==='intake.status')return intakeStatus(store,args.id);

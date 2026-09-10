@@ -1,102 +1,105 @@
-# Graph & Shadow: Wissen verbinden. Fundstellen bewahren.
+# What Knowledge Studio adds to an LLM-wiki
 
-![Eine Freigabe verweist begründet auf einen Testbericht; eine genaue Textstelle daraus bleibt als separater Beleg mit Fassung erhalten](title.png)
+![Linked wiki pages, explained connections and a saved quotation form one workspace for examining evidence.](title.png)
 
-Eine KI empfiehlt, ein Vorhaben freizugeben. Worauf stützt sie sich? Welche Quelle spricht dagegen? Und was stand in dem Absatz, bevor jemand ihn überarbeitet hat?
+If you already use an LLM-wiki, you have a place where an AI assistant can turn documents into lasting knowledge. The next question is how you check that knowledge: which requirement shaped a recommendation, which source supports it, and what your colleagues changed since you last read it.
 
-Ein LLM-Wiki bereitet Quellen zu einem dauerhaften Wissensbestand auf: thematische Seiten, Querverweise und Belege in Markdown. Neue Dokumente ergänzen diesen Bestand, spätere Fragen greifen darauf zurück. Wissen bleibt so auch außerhalb eines Chats lesbar und bearbeitbar.
+I built [Knowledge Studio](https://github.com/pssah4/knowledge-studio) around that work. It combines an LLM-wiki with graph-based retrieval, block-level passage links and an editor for inspecting sources and reviewing changes. You can examine the reasoning recorded in your notes, open cited passages and discuss a correction in the same workspace.
 
-Meine Erweiterung verbindet zwei Zugriffsebenen auf dieses Wissen:
+Consider a field team choosing a notes app. Team members visit locations without mobile coverage, so they must be able to **write without a connection**. The product guide says, "Notes can be edited offline." Later, the guide is corrected to "Offline access is read-only." The app no longer meets the requirement as documented. The team needs to revisit its choice and understand why the earlier choice seemed reasonable. This is a fictional example used throughout the article.
 
-- **Knowledge Graph:** Wie hängen die Wiki-Seiten fachlich zusammen, und warum?
-- **Markdown Shadows:** Welche Textstelle in welcher Fassung ist gemeint?
+### The LLM-wiki keeps the knowledge between conversations
 
-Der Graph macht Beziehungen explizit. Der Shadow bildet die Textstruktur außerhalb der Markdown-Dateien ab und ermöglicht genaue, revisionsbezogene Fundstellen. Beide ergänzen denselben frei bearbeitbaren Bestand. Ein eingebauter Editor kommt als gemeinsame Arbeitsoberfläche dazu.
+An LLM-wiki is a collection of linked pages that an AI assistant helps build and maintain. Sources, notes and decisions remain available after a conversation ends, so the next question can build on earlier work.
 
-## Die Grundlage: Mark Zimmermanns SkillSafeWerkstatt
+When you run **Maintain**, it checks connected folders for new or changed material and guides the assistant through reading it and updating the wiki. **Query** retrieves passages from the available wiki for the assistant to answer with citations. Query's retrieval tools are read-only; asking a question does not rewrite the knowledge base or ingest changed originals.
 
-Mark Zimmermann hat dieses Prinzip mit [SkillSafeWerkstatt](https://github.com/GodModeAI2025/SkillSafeWerkstatt) in zwei zusammengehörige Skills umgesetzt. `maintain-llm-wiki` baut das Wiki auf und pflegt es. `query-llm-wiki` liest einen geprüften Stand und beantwortet Fragen mit Belegen, ohne dabei Inhalte zu verändern.
+The skills provide instructions and executable tools. The assistant interprets the sources and writes the explanations connecting them. Those judgments can be wrong even when the software verifies a quote's wording and location. The cited passages let you check whether an answer follows from its sources.
 
-Die Werkstatt trennt Originaldokumente, quellengetreue Markdown-Abbilder und aufbereitete Wissensseiten. Graphansichten, strukturierte Aussagebeziehungen, Belegketten und nachvollziehbare Freigaben gehören bereits zu dieser Grundlage.
+![An illustration of a requested Maintain run updating wiki pages and Query retrieving material for an answer with citations.](llm-wiki.png)
 
-Mein Repository baut darauf auf und übernimmt Teile des technischen Kerns. Mein Schwerpunkt ist die Integration von schema-geprüften, begründeten Seitenbeziehungen und einer externen Block- und Belegverwaltung für frei geschriebene Markdown-Texte.
+*Maintain updates the collection when invoked. Query gives the assistant passages to use in its answer.*
 
-## Der Graph bekommt fachliche Bedeutung
+The pages are ordinary Markdown files. You can edit them in the built-in editor or Obsidian. A source copy preserves the product guide; a requirements page explains why offline writing matters; a decision page records the proposed app choice. These separate roles let you examine a conclusion without confusing it with the source's words.
 
-Ein Beispiel: Die Seite „Freigabe“ verweist auf die Quellenseite „Testbericht“. Die Kante trägt den Typ `references` und die Begründung: „Der Bericht dokumentiert die erfüllten Freigabekriterien.“ Eine weitere Beziehung kann ein Konzept präzisieren oder einen Widerspruch festhalten. Unterschiedliche Ergebnisse unter unterschiedlichen Bedingungen allein belegen noch keinen Widerspruch.
+### The graph makes relationships useful during retrieval
 
-Die Knoten sind **Wiki-Seiten**. Jede semantische Kante hat einen Typ, eine Richtung, ein Ziel und eine lesbare Begründung im Markdown. Ein gemeinsames Schema prüft zulässige Seitentypen und Beziehungen. Fachlich bewerten müssen wir die Begründungen weiterhin selbst.
+Text search supplies starting pages. A knowledge graph adds routes between them: each node is a wiki page. A typed semantic connection has a direction and a written reason explaining the relationship. Ordinary navigation links can also appear in the graph; the search expands through the valid typed connections.
 
-Die Suche kombiniert Volltexttreffer mit der Navigation im Graph. So kann sie von einer Empfehlung zu verknüpften Quellen und Gegenbelegen gelangen. Das ist ein GraphRAG-Ansatz ohne erforderlichen Embedding-Dienst. Sein Nutzen hängt davon ab, wie sorgfältig die Beziehungen gepflegt sind.
+The illustration shows one possible retrieval path. Text search finds "Field requirements", shown as an open page in the wiki book. Retrieval follows a stored "references" connection to "Verification checklist": the checklist turns the requirement into a check. A second connection leads to "Product guide", whose documented behavior is what the checklist tests. With these relationships in place, this two-step route can bring the guide into context even if it was not an initial text match.
 
-![Deutscher Wissensgraph mit einer begründeten Beziehung](editor-relationship.png)
+![An illustrative retrieval path follows two stored references connections from Field requirements through Verification checklist to Product guide, then leads to an example answer limited to the documented behavior.](architecture.png)
 
-*Der Graph zeigt Verbindungen zwischen Recherche und Teamwissen. Die ausgewählte Beziehung enthält eine fachliche Begründung.*
+*A schematic example, not a recorded agent run. Blue connections show a possible retrieval path; gray connections show other relationships. The example answer cites the requirement [1] and guide [2].*
 
-## Frei schreiben und trotzdem genau belegen
+Here, GraphRAG means retrieval that combines text matches with connected pages. The retrieved context includes the relationship type, its reason and the page through which each additional page was reached. The assistant must assess whether those pages support the answer. In this example, the requirement and guide provide the basis for explaining why documented offline reading does not meet a need for offline writing.
 
-Die Werkstatt strukturiert Aussagen in eigenen Belegblöcken. In meinem Ansatz bleiben neue Wissensseiten zusammenhängende Markdown-Texte, die ich auch in Obsidian oder einem anderen Editor bearbeiten kann. Für genaue Textbezüge braucht es deshalb eine separate Struktur.
+For the reader, this provides two ways to check an answer: open its cited pages and inspect why those pages are connected. The graph helps navigate beyond matching words; the sources let you assess whether the conclusion follows.
 
-Das übernehmen seit Version 0.4.17 die **Markdown Shadows**: eine externe Abbildung von Absätzen, Überschriften, Listen und Codeblöcken samt Kennungen, Textbereichen und Dokumentfassung. Die Adressierung fügt keine Blockmarkierungen in die Markdown-Dateien ein.
+The current retrieval path uses keyword ranking and graph traversal, without an embedding service. Missing relationships, vocabulary gaps and incomplete source extraction can limit what it finds. A schema checks permitted page and relationship types; it cannot decide whether a relationship is factually justified or a source is right.
 
-Der Seitengraph führt zum Testbericht. Der Shadow adressiert darin etwa den Absatz „Die Anlage liefert 12 MW.“ Ein Textblock wird dadurch weder automatisch zur geprüften Aussage noch zum semantischen Graphknoten. Beide Ebenen erfüllen unterschiedliche Aufgaben im selben Arbeitsablauf.
+### The Markdown-shadow makes passages addressable without marking up the text
 
-![Ein frei bearbeitbarer Testbericht und ein separates Verzeichnis seiner Textstellen mit Bezug zur Dokumentfassung](architecture.png)
+A graph connects pages. I also wanted to cite individual passages in ordinary Markdown files without adding an identifier to every paragraph or maintaining those identifiers by hand. [Notion represents page content as blocks](https://developers.notion.com/guides/data-apis/working-with-page-content). [Obsidian supports block links](https://obsidian.md/help/links), but its block identifiers extend the Markdown text and are specific to Obsidian. My aim with the Markdown-shadow is to keep the block references outside the file, leaving the Markdown unchanged for reading and editing.
 
-*Links der Text, rechts sein externes Textstellen-Verzeichnis. Hervorhebung und Nummern veranschaulichen die Zuordnung; der Shadow schreibt sie nicht in die Markdown-Datei. Fiktives Beispiel.*
+The implementation identifies paragraphs, headings, lists, tables and code blocks in the connected wikis and records their identities and positions separately. On a supported Node installation, each completed Maintain run refreshes this shadow against the current files. It detects changes made in Knowledge Studio, Obsidian or another editor once they are available in the accessible working copy. You do not need to insert or repair block markers yourself.
 
-Die Node-Laufzeit pflegt dafür je Projekt einen lokalen SQLite-Spiegel außerhalb des Projektordners. Dieser Cache lässt sich neu aufbauen. Dauerhafte Identitätshistorie und ausdrücklich gespeicherte Zitierbelege liegen getrennt davon und werden mit dem Wiki abgeglichen. Die laufende Datenbank wird nicht synchronisiert.
+Query can use these passages immediately to produce citations; saving a quotation first is unnecessary. A citation opened from an exported Query answer takes you to the exact passage in Knowledge Studio. Query also checks the current file contents: if the persistent shadow is stale or absent, it reads the current block structure without writing a replacement cache. Persistent identities are available again after successful maintenance.
 
-Der Ablauf bleibt bewusst aufgeteilt: **Maintain aktualisiert, Query findet, Maintain speichert ausgewählte Belege.** Query erzeugt keine Zitierdatensätze. Ein gespeicherter Beleg lässt sich im Editor öffnen.
+![A plain Markdown product guide connects to separately maintained block references. A Query answer cites the offline-editing passage through a passage link.](markdown-shadows.png)
 
-Steht später „14 MW“ in der Datei, behält der alte Beleg „12 MW“ und seine ursprüngliche Fassung. Eine eindeutige, unveränderte Nachfolgerstelle kann separat angeboten werden. Bei Bearbeitungen oder Mehrdeutigkeit darf das System keine Fortführung behaupten.
+*Maintain updates the external block references. Query uses them to cite a passage without inserting identifiers into the source Markdown. This is a conceptual illustration.*
 
-Query prüft die aktuellen Dateien. Fehlt der Spiegel oder ist er veraltet, werden die Textstellen vorübergehend lesend ermittelt. Browser und Vault nutzen ebenfalls diesen Weg; dauerhafte SQLite-Pflege benötigt Node. Vektorsuche könnte die Suche künftig ergänzen.
+The current links depend on Knowledge Studio and the originating project and working copy; this is not yet a format that arbitrary Markdown applications resolve. Even the built-in editor does not yet open these links correctly when they are embedded in another wiki note. An unchanged, uniquely identifiable block can keep its identity after moving. Editing its wording creates a new reference: an old citation does not silently switch to the changed text. Maintenance removes the manual work of updating the block records; it cannot guarantee that every existing citation survives an edit.
 
-Die gezeigte lokale Demo prüft gespeicherte und historische Zitate im echten Editor. Sie ersetzt keine fachliche und native Abnahme aller Zielumgebungen.
+Retaining earlier wording is a separate, optional feature. Ask Maintain to **save a passage as a citation** before changing it, using a supported Node installation. In the example, this keeps "Notes can be edited offline" available after the correction. Ordinary passage links do not archive old text. Browser-only and Vault Operator runtimes can read current passages and resolve already saved quotations, but cannot maintain the persistent shadow or create new retained quotes on their own.
 
-![Die aktuelle Datei enthält 14 MW in Fassung B, der zuvor gespeicherte Beleg behält 12 MW und Fassung A](markdown-shadows.png)
+### The editor puts the checks beside the writing
 
-*Schematisches Beispiel: Die Datei ändert sich von 12 auf 14 MW. Der ausdrücklich gespeicherte Beleg behält 12 MW und die zitierte Fassung.*
+The screenshots below show the actual application with fictional English content. The demo ingests and corrects a Word document through the software; its decision notes and relationships were written in advance. It demonstrates the editor and evidence-handling workflow, not how reliably an AI assistant would produce the same analysis unaided. The book-and-paper images are AI-generated illustrations.
 
-![Der Editor zeigt einen gespeicherten Beleg als frühere Fassung nach Änderung der Markdown-Datei](editor-shadow-history.png)
+![The editor displays an app-selection note, its checklist, document outline and connected wikis.](editor-writing.png)
 
-*Echte Editoraufnahme mit synthetischen Notizen: Ein gespeicherter Wortlaut bleibt nach der Überarbeitung als „Frühere Fassung“ erhalten.*
+*Write the decision, record the remaining device test and navigate its sections in live preview.*
 
-## Wissen selbst einordnen
+Markdown source, live preview and reading mode work on the same file. Properties expose the page's type and status. The outline helps with longer notes; checklists keep unresolved checks beside the recommendation. Saves happen after a short typing pause, and concurrent file changes pause saving for review.
 
-Zur Pflege gehört für mich auch die Aneignung im Dialog. Die KI vergleicht eine Quelle mit vorhandenem Wissen, arbeitet Widersprüche heraus und bespricht mit mir, was ich übernehmen möchte. Ich kann Erkenntnisse annehmen, zurückstellen oder ablehnen. Die Entscheidung bleibt mit ihren Belegen nachvollziehbar.
+![The Word product guide opens in the source viewer while the wiki remains available in the sidebar and tabs.](editor-source.png)
 
-Damit ist erkennbar, welche Einschätzung ich tatsächlich übernommen habe. Ändert sich eine Grundlage, kann ich sie erneut bewerten. Eigene Notizen und eingebettete Bilder gehören ebenfalls zu diesem Bestand.
+*Read the original product guide separately from the interpretation in the decision note.*
 
-## Persönliches Wissen und Teamwissen zusammen nutzen
+The built-in viewer opens supported Word, spreadsheet, presentation and PDF originals without editing them. The graph view can span several connected wikis, so personal research and shared knowledge remain separate collections you can explore together. It shows the graph saved by Maintain; after editing notes externally, run Maintain to update their relationships and the graph view.
 
-Mehrere Wikis lassen sich verbinden und gemeinsam befragen: Wo weicht meine Bewertung vom Teamstand ab, und welche Quellen erklären den Unterschied? Die Suche berücksichtigt die ausgewählten, zugänglichen Wikis und erhält deren Zuordnung.
+![A selected graph connection shows why the field requirements matter to the app selection.](editor-relationship.png)
 
-Für die Zusammenarbeit gibt es getrennte Arbeitskopien und einen Abgleich mit Änderungsprüfung. Jede Person kann Änderungen vor der Übernahme ansehen. Bei Konflikten bleiben Ausgangsfassung und beide Bearbeitungen verfügbar.
+*Select a connection to inspect its type and explanation; select a page to open it.*
 
-## Dazu kommt ein eingebauter Editor
+For the optional saved-quotation workflow, **Open retained quote** accepts a saved citation link or identifier and displays the retained words. **Highlight passage** appears when a verified current match exists. After the offline claim changes, the dialog keeps the earlier words but offers no highlight for an assumed replacement.
 
-Der mitgelieferte Browsereditor verbindet Markdown-Bearbeitung, Quellenansichten, Graph und Änderungsprüfung. So kann die KI Inhalte vorbereiten, während ich Quellen daneben lese und Formulierungen ändere. Obsidian und andere Editoren arbeiten mit denselben gespeicherten Dateien; Export und erneuter Import entfallen.
+![The retained-quote dialog labels the original offline-editing claim as an earlier version.](editor-shadow-history.png)
 
-![Editor mit deutschen Beispielnotizen und verbundenen Wikis](editor-writing.png)
+*The saved quote answers “What wording did we retain?” Change review answers “What changed in the file?”*
 
-*Der Editor mit deutschen Beispielnotizen. Dieselben gespeicherten Markdown-Dateien lassen sich auch in Obsidian nutzen.*
+### A correction becomes shared work
 
-## Für welche Agenten die Skills verfügbar sind
+On a subsequent run, Maintain detects the changed original guide and replaces the managed source excerpt with the corrected text. It preserves the source's identity and notes outside that excerpt. Recorded source citations and typed relationships identify candidate pages within that wiki for reassessment, including "App selection" in this example. Finding a dependency does not revise the conclusion; the assistant must read and assess it. Missing references can leave affected pages undiscovered.
 
-Die öffentlichen Pakete gibt es für **Claude Code, Claude Cowork, Codex, ChatGPT und Vault Operator**. Beide Skills werden für dieselbe Plattform und Version installiert. Node-basierte Pakete benötigen Node ab 22.13 und Zugriff auf die Projektdateien. ChatGPT setzt eine Arbeitsumgebung mit Skill-Unterstützung und Node-Dateiausführung voraus; ein normaler Chat erhält dadurch keinen lokalen Ordnerzugriff. Vault Operator nutzt seine native JavaScript-Umgebung und Obsidian, für Shadow-Abfragen mit dem beschriebenen lesenden Rückfall.
+Editing only the generated excerpt is different: if the original still promises offline editing, re-ingestion restores that wording. A correction proposal belongs in a note until the original is corrected.
 
-## Was daran neu ist, und was schon bekannt war
+![Versions and changes compares the earlier offline-editing promise with the corrected read-only wording and provides review controls.](editor-review.png)
 
-Eine aus Markdown abgeleitete Blockdatenbank ist als Grundidee bekannt. [Logseqs dateibasierte Architektur](https://github.com/logseq/og/blob/HEAD/src/main/frontend/handler/common/file.cljs) liest Dateien strukturiert ein und gleicht Blockidentitäten bei externen Änderungen ab. Für dauerhaft referenzierte Blöcke schreibt Logseq auch Kennungen in Dateien. Markdown Shadows verfolgen hier eine andere Vorgabe: Ihre Identitäten und gespeicherten Zitate bleiben außerhalb des Markdown-Textes.
+*The comparison uses an earlier personal baseline or recorded revision. The saved quote is a separate record. The comment shown is an unsent example.*
 
-[Basic Memory](https://docs.basicmemory.com/concepts/knowledge-format/) verbindet Markdown, KI-Zugriff und typisierte Beziehungen. [Microsoft GraphRAG](https://microsoft.github.io/graphrag/index/default_dataflow/#phase-3-graph-extraction) beschreibt Beziehungen in natürlicher Sprache. Externe Textanker sind unter anderem bei [Hypothesis](https://web.hypothes.is/blog/fuzzy-anchoring/) und im [W3C Web Annotation Data Model](https://www.w3.org/TR/2017/REC-annotation-model-20170223/) dokumentiert.
+Shared wikis use separate working copies. During synchronization, a clean working copy receives an incoming correction automatically. Both participants need to synchronize, through an active browser editor or a Maintain run. A closed editor and an idle agent do not exchange changes.
 
-**Mein Beitrag ist die konkrete Zusammenführung:** begründete, schema-geprüfte Seitenbeziehungen plus externe Blockadressierung und revisionsgebundene Zitierbelege über frei bearbeitbarem Markdown. Dazu kommen die getrennten Rollen für Pflege und Abfrage sowie der Editor. Für diese Kombination habe ich in den geprüften Quellen keine deckungsgleiche Beschreibung gefunden. Eine weltweite Neuheit ist damit nicht belegt.
+**Change inbox** and the page's **Review changes** banner expose differences from your saved or accepted baseline. Recorded changes include an author and time, with comments and proposals available in the review view. An external edit can initially have an unknown author; names are attribution, not authenticated identities. Receiving an update and acknowledging it are separate steps.
 
-Die [Recherche mit Quellen und Abgrenzungen](research-notes.md) hält fest, was bereits bekannt ist und welche Fragen offenbleiben.
+If two people change the same file differently, synchronization keeps a conflict, even if they edited different paragraphs. They choose one version or explicitly combine them. There is no automatic paragraph merge or requirement that every reader approve a correction before it becomes current.
 
-Für mich zählt der praktische Gewinn: Von einer Empfehlung zu ihren Gründen gelangen, die gemeinte Textstelle prüfen und auch später noch wissen, was damals tatsächlich dort stand.
+### Who this is for
 
-[Mein Repository und Installation](https://github.com/pssah4/graphhrag-llm-wiki) · [Herkunft und Lizenzen](../../NOTICE.md)
+I designed Knowledge Studio for work that involves returning to a conclusion, its supporting passages and other people's edits. If your existing LLM-wiki already supports those checks comfortably, you may gain little from another interface. If you currently perform them across chat transcripts, source viewers and file comparisons, this project brings them together around the Markdown you keep. The benefit described here is easier access to the material you need to review; this example does not establish better answer accuracy or faster decisions.
+
+The combination is the contribution; linked notes, graph retrieval and text anchoring each have precedents. The project builds on Mark Zimmermann's [SkillSafeWerkstatt](https://github.com/GodModeAI2025/SkillSafeWerkstatt), including adopted parts of its integrity core. [NOTICE.md](https://github.com/pssah4/knowledge-studio/blob/main/NOTICE.md) records the attribution.
+
+To try it, install Maintain and Query for a supported Node host and connect folders containing a test decision and its sources. Run Maintain to integrate them, then ask Query which passages support the decision and which call it into question. Open a citation from the exported answer and check the highlighted source passage. To also try the historical-evidence example, open the source copy in the editor to establish a comparison baseline and ask Maintain to save a relevant citation. Then change the test source and run Maintain again to compare the retained quote with the file's change review. Packages and setup instructions are in the [public repository](https://github.com/pssah4/knowledge-studio).

@@ -6,18 +6,22 @@ import {requireThat,relativePath,nonempty} from './core/errors.mjs';
 import {save} from './review.mjs';
 import {buildGraph,resolveEvidence} from './core/graph.mjs';
 
-export async function plan(store,source,{prefix='',paths}={}){
+export async function plan(store,source,options={}){
+  return compareInventory(store,source,await inventory(source,options),options);
+}
+/** A complete names snapshot avoids re-reading absent originals during monitor resume. */
+export async function compareInventory(store,source,originals,{prefix='',paths,listedPaths=null}={}){
   if(prefix)relativePath(prefix);if(paths){requireThat(Array.isArray(paths),'paths','Select source-relative paths.');paths.forEach(p=>relativePath(p));}
   const selected=p=>(!prefix||p===prefix||p.startsWith(prefix+'/'))&&(!paths||paths.includes(p));
-  const originals=await inventory(source,{prefix,paths}),byName=new Map(originals.map(f=>[f.path,f])),mirrors=[];
+  const byName=new Map(originals.map(f=>[f.path,f])),mirrors=[];
   for(const e of await store.list(''))if(e.kind==='file'&&visibleKnowledge(e.path)){const f=await store.read(e.path),p=parseDocument(f.text);if(p.head.resource?.store===source.id)mirrors.push({page:e.path,expectedPage:f.sha256,source_id:p.head.source_id??p.head.id,resource:p.head.resource,integrity:await sourceIntegrity(store,p)});}
   const known=new Map(mirrors.map(m=>[m.resource.name,m])),changes=[];
   for(const f of originals){const prior=known.get(f.path);if(f.error){changes.push({...f,state:'unreadable'});continue;}
     if(prior){changes.push({...f,...prior,state:prior.resource.sha256!==f.sha256||prior.resource.availability==='missing'?'changed':prior.integrity.complete?'unchanged':'repair_required'});continue;}
     // A rename is only a candidate when the old original is actually absent and
     // both sides are unique. Copies with equal content remain separate sources.
-    const candidates=[];for(const m of mirrors.filter(m=>m.resource.sha256===f.sha256))if(!await source.store.read(m.resource.name,{binary:true}))candidates.push(m);
-    const unique=originals.filter(o=>o.sha256===f.sha256&&!known.has(o.path)).length===1;
+    const candidates=[];for(const m of mirrors.filter(m=>m.resource.sha256===f.sha256))if(listedPaths?!listedPaths.has(m.resource.name):!await source.store.read(m.resource.name,{binary:true}))candidates.push(m);
+    const unique=(!listedPaths||!originals.some(o=>o.error))&&originals.filter(o=>o.sha256===f.sha256&&!known.has(o.path)).length===1;
     changes.push({...f,state:candidates.length===1&&unique?'renamed':'new',...(candidates.length===1&&unique?candidates[0]:{}),previous_name:candidates.length===1&&unique?candidates[0].resource.name:undefined});
   }
   for(const m of mirrors)if(selected(m.resource.name)&&!byName.has(m.resource.name)&&!changes.some(c=>c.state==='renamed'&&c.page===m.page))changes.push({...m,path:m.resource.name,state:'missing'});

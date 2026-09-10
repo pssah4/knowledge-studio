@@ -50,7 +50,7 @@ export function resolvePage(graph,from,written){
 
 export async function buildGraph(wikis,{allowMissingRegister=false}={}){
   requireThat(Array.isArray(wikis)&&wikis.length>0&&new Set(wikis.map(w=>w.id)).size===wikis.length,'scope','Select unique accessible wikis.');
-  const graph={pages:new Map(),scopes:new Map(),names:new Map(),projectPaths:new Map(),evidence:new Map(),edges:[],findings:[],failures:[]};
+  const graph={pages:new Map(),scopes:new Map(),names:new Map(),projectPaths:new Map(),evidence:new Map(),edges:[],findings:[],failures:[],redirects:[]};
   for(const wiki of wikis){
     const scope={...wiki,paths:new Map(),names:new Map(),ids:new Map(),register:null};graph.scopes.set(wiki.id,scope);
     try{
@@ -61,6 +61,7 @@ export async function buildGraph(wikis,{allowMissingRegister=false}={}){
         if(entry.kind!=='file'||!entry.path.endsWith('.md')||technical(entry.path))continue;
         try{
           const file=await wiki.store.read(entry.path), parsed=parseDocument(file.text);
+          if(parsed.head.llmwiki_redirect){graph.redirects.push({wiki:wiki.id,path:entry.path,target:parsed.head.llmwiki_redirect});continue;}
           const key=pageKey(wiki.id,entry.path),page={...parsed,key,wiki:wiki.id,path:entry.path,sha256:file.sha256};
           graph.pages.set(key,page);scope.paths.set(entry.path,key);
           const name=entry.path.split('/').pop().slice(0,-3);add(scope.names,name,key);add(graph.names,name,key);
@@ -79,6 +80,7 @@ export async function buildGraph(wikis,{allowMissingRegister=false}={}){
       }
     }catch(error){graph.findings.push({wiki:scope.id,code:'identity_alias_invalid',message:error.message});}
   }
+  for(const r of graph.redirects){const target=graph.scopes.get(r.target.wiki),keys=target?.ids.get(r.target.id)??[],key=keys.length===1?keys[0]:null,page=graph.pages.get(key);if(!page)continue;const origin=graph.scopes.get(r.wiki);origin.paths.set(r.path,key);if(!origin.ids.has(r.target.id))origin.ids.set(r.target.id,[key]);const name=r.path.split('/').at(-1).replace(/\.md$/,'');if(!origin.names.has(name))origin.names.set(name,[key]);if(origin.path!=null)add(graph.projectPaths,origin.path+'/'+r.path,key);}
   for(const [id,keys] of graph.evidence)if(keys.length>1)graph.findings.push({code:'duplicate_id',id,pages:keys});
   const seen=new Set();
   for(const page of graph.pages.values()){

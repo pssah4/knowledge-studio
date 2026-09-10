@@ -1,5 +1,5 @@
 import {VaultStore,prepare,resume} from './adapters/vault.mjs';
-import {dispatch} from './dispatch.mjs';
+import {dispatch,queryActions} from './dispatch.mjs';
 import {extractSource} from './readers/index.mjs';
 import {setupContract} from './setup-contract.mjs';
 export async function execute(args,ctx){
@@ -15,7 +15,7 @@ export async function execute(args,ctx){
     resume:{action:'transaction.resume',root,transaction:'<returned transaction>'}},
    commit:'prepared/pending are not committed; respect retry_after_seconds and resume until complete. Existing setup drafts/settings require their returned sha256 as expected.'}};
  }
- if(readOnly&&!['shadow.status','shadow.resolve','inspect','context','source.inventory','source.plan','source.read','read','query','graph','readiness','workflow.status','workflow.list','review.read'].includes(args.action))throw Error('The query skill is read-only.');
+ if(readOnly&&!queryActions.includes(args.action))throw Error('The query skill is read-only.');
  const root=new VaultStore(ctx.vault,args.root??'',{writable:!readOnly});
  if(['configure','wiki.initialize'].includes(args.action))root.services={...root.services,registerText:await ctx.vault.read(args.skills_root+'/'+args.skill_name+'/assets/TYPES.md')};
  if(args.action==='transaction.resume')return resume(root,args.transaction);

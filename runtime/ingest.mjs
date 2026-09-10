@@ -4,7 +4,7 @@ import {parseDocument,patchHead,removeHeadFields} from './core/document.mjs';
 import {requireThat,relativePath,nonempty} from './core/errors.mjs';
 import {save} from './review.mjs';
 import {markdownLink} from './links.mjs';
-function originalLink(fromRoot,toRoot,page,name){
+export function originalLink(fromRoot,toRoot,page,name){
  if(typeof fromRoot!=='string'||typeof toRoot!=='string')return null;
  const from=fromRoot.replace(/\\/g,'/'),to=toRoot.replace(/\\/g,'/');
  const link=markdownLink(from+'/'+page,to+'/'+name,name.split('/').at(-1));

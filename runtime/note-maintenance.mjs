@@ -2,14 +2,16 @@
 import {parseDocument,statementText,relationRows} from './core/document.mjs';
 import {requireThat,nonempty,relativePath} from './core/errors.mjs';
 import {embeddedAssets} from './assets.mjs';
+import {readRegister} from './core/ontology.mjs';
+import {reviewAdvisories} from './core/note-contract.mjs';
 import {buildGraph} from './core/graph.mjs';
 export const ownPage=(path,head)=>/\.md$/i.test(path)&&!path.split('/').some(p=>p.startsWith('.')||['schema','meta','notices','vermerke','_attachments','Attachments'].includes(p))&&!/(^|\/)(?:bundle|index|WIKI)\.md$/i.test(path)&&!path.endsWith('.excalidraw.md')&&!head.resource;
 async function snapshot(store,page,entries){const file=await store.read(page);if(!file)return null;const parsed=parseDocument(file.text),hash=await store.services.hash(statementText(file.text).trimEnd()),assets=await embeddedAssets(store,page,file.text,entries);return {file,parsed,hash,assets};}
 async function ledgerPath(store,page,head){return '.llmwiki/note-reviews/'+await store.services.hash(String(head.id??head.uid??page))+'.json';}
 const assetState=assets=>assets.map(a=>({written:a.written,path:a.path,sha256:a.sha256}));
-export async function planNotes(store){const entries=await store.list(''),changes=[];
+export async function planNotes(store){const entries=await store.list(''),changes=[],advisories=[],registered=await store.read('schema/TYPES.md'),register=registered?readRegister(registered.text):null;
  for(const entry of entries)if(entry.kind==='file'&&/\.md$/i.test(entry.path))try{
-  const s=await snapshot(store,entry.path,entries);if(!ownPage(entry.path,s.parsed.head))continue;
+  const s=await snapshot(store,entry.path,entries);if(!s||!ownPage(entry.path,s.parsed.head))continue;advisories.push(...reviewAdvisories(s.parsed,register,store.services.now()).map(f=>({...f,page:entry.path})));
   const prior=await store.read(await ledgerPath(store,entry.path,s.parsed.head)),record=prior?JSON.parse(prior.text):null;let state=!record?'new':record.hash!==s.hash?'changed':'unchanged';
   if(state==='unchanged'){
    if(JSON.stringify(record.assets)!==JSON.stringify(assetState(s.assets)))state='dependency_changed';
@@ -17,7 +19,7 @@ export async function planNotes(store){const entries=await store.list(''),change
   }
   changes.push({page:entry.path,expected:s.file.sha256,state,assets:s.assets.map(({reading,...a})=>a),last_review:record?.at??null});
  }catch(error){changes.push({page:entry.path,state:'unreadable',error:{code:error.code,message:error.message}});}
- return {changes,counts:Object.fromEntries(['new','changed','unchanged','dependency_changed','unreadable'].map(s=>[s,changes.filter(c=>c.state===s).length])),complete:changes.every(c=>c.state==='unchanged')};
+ return {changes,advisories,counts:Object.fromEntries(['new','changed','unchanged','dependency_changed','unreadable'].map(s=>[s,changes.filter(c=>c.state===s).length])),complete:changes.every(c=>c.state==='unchanged')};
 }
 export async function reviewNote(store,args){
  const {page,expected,author,quote,assessment,topics,relations,compared}=args;relativePath(page);nonempty(author,'author');nonempty(quote,'quote');nonempty(assessment,'assessment');nonempty(topics?.reason,'topic decision');nonempty(relations?.reason,'relation decision');

@@ -44,7 +44,7 @@
     "vendor/office/zrimo/dist/ui.js": "f60da44736ffb8f9754c40425ff5516553ab34f7092b6c81947679ec538de048",
     "vendor/office/zrimo/dist/viewer.js": "bd20934b3816583ff02eab968eb517139b5dfa71089299e479f94deab4c562cb",
     "vendor/office/zrimo/dist/viewport.js": "ae8fc25f3594d774e6395b9bbbbdc95361de82c7117980570f099ca5bf473afe",
-    "scripts/build_office.mjs": "7c4abbb75967a320dcc436e8f61526749756330d80790125cefa1d4d4eee048b",
+    "scripts/build_office.mjs": "bc371905bfbfe5e025efcc66c2b37cb11f7e683774bf39ba73a532151fce1e89",
     "vendor/office/ooxml/package.json": "e5f125b63fd653912b576c3ea1c78ec9bd0836a90d61c4a8ea33d2095c6a236f",
     "vendor/office/zrimo/package.json": "002422134eb7570a30dfd0d473b437bc564226689e410323f1427532e1dcbdda",
     "vendor/office/ooxml/LICENSE": "c5ef721b35150df22732e27fd72224e61a87e0887fcd2505abe90c056ae053bb",

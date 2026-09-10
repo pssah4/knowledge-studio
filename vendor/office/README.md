@@ -38,3 +38,7 @@ structure. Both paths can reject unsupported or damaged files.
 The complete upstream license notices are included in the generated document and
 `runtime/assets/office-NOTICES.txt`. Upstream notices also mention optional
 assets omitted by this build.
+
+## Dependency audit
+
+`node scripts/audit-dependencies.mjs --online` verifies every recorded input and output hash, inventories the WASM files and license/provenance inputs, and checks exact npm/Office versions against npm and OSV. The private CI runs it on each change; the JSON report distinguishes execution, lookup failure and missing coverage. To update, inspect the upstream release and notices, replace the selected files, rebuild with `scripts/build_office.mjs`, then repeat the audit and browser Office regressions. Internal Rust/crate versions cannot be reconstructed from the vendored parser binaries; absence of a versioned upstream SBOM remains an explicit audit gap.

@@ -1,6 +1,6 @@
 {
   "name": "knowledge-studio",
-  "version": "0.4.23",
+  "version": "0.4.24",
   "private": true,
   "type": "module",
   "engines": {
@@ -10,13 +10,15 @@
     "build": "node scripts/build.mjs",
     "version": "node scripts/version-bump.mjs",
     "verify:version": "node scripts/version-bump.mjs --check",
-    "release:assets": "node scripts/release-assets.mjs"
+    "release:assets": "node scripts/release-assets.mjs",
+    "audit:dependencies": "node scripts/audit-dependencies.mjs --online"
   },
   "dependencies": {
-    "yaml": "2.9.0",
-    "fflate": "0.8.3",
     "fast-xml-parser": "5.11.1",
-    "pdfjs-dist": "6.3.289"
+    "fflate": "0.8.3",
+    "katex": "0.18.7",
+    "pdfjs-dist": "6.3.289",
+    "yaml": "2.9.0"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

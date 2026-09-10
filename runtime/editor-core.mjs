@@ -43,3 +43,6 @@ export {resolveQuote,resolvePassage} from './shadow-project.mjs';
 export {parseShadow,resolveLocator} from './shadow.mjs';
 
 export {decodePassage} from './passage-links.mjs';
+
+export {renderFormula} from './math-render.mjs';
+export {relationshipDraft,relationshipOptions} from './relationship-editor.mjs';

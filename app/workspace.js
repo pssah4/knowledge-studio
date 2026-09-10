@@ -179,9 +179,11 @@ async function preserveDrafts(tabs=state.tabs){
     catch(_){throw global.I18n.error(msg('The unsaved draft could not be preserved. The file stays open. Save or copy your text before disconnecting or switching projects.'));}
   }
 }
-function changed(text) {
+function changed(text,historyAction) {
   if(!state.active||state.active.viewer)return;
   const tab=state.active;
+  if(state.mode==='live'&&historyAction&&tab.relationshipHistory){const parsed=global.WikiCore.parseDocument(tab.text),step=[...tab.relationshipHistory].reverse().find(r=>historyAction==='undo'?r.after===parsed.body&&r.before===text:r.before===parsed.body&&r.after===text);if(step){const patched=global.WikiCore.patchHead(tab.text,{related:historyAction==='undo'?step.relatedBefore:step.relatedAfter});state.editorPrefix=patched.slice(0,global.WikiCore.parseDocument(patched).offset);}}
+
   if(state.mode==='source'&&!state.historyReplay&&text!==tab.text){(tab.sourceUndo||=[]).push(tab.text);if(tab.sourceUndo.length>100)tab.sourceUndo.shift();tab.sourceRedo=[];}
   tab.text=(state.mode==='live'?(state.editorPrefix||''):'')+text;
   renderTabs();renderOutline(false);drawCompletions();if(state.mode==='live')requestAnimationFrame(renderLiveAssets);
@@ -594,7 +596,7 @@ async function saveActive({automatic=false,target=state.active}={}){
     if(merged.hasOpenSpots){if(!automatic)await compare();status(msg("Not saved. Review the changes in both versions."));return;}
     const done=await global.WikiCore.saveNote(tab.dir,tab.name,current,merged.text,reviewAuthor,F(),R(),{update:false});
     if(!done.saved){if(!automatic)await compare();status(msg("The file changed again. Reopen the comparison before deciding."));return;}
-    await savedReview(tab,done,{preserveEditing:automatic,submitted});
+    await savedReview(tab,done,{preserveEditing:true,submitted,refreshIndex:!automatic});
   }finally{state.reviewBusy=false;setTimeout(()=>synchronizeWikis().then(refresh).catch(report),0);}
 }
 async function newFolder(wiki,parent='wiki'){
@@ -1191,20 +1193,23 @@ async function followLink(tab,target){
 }
 /* Preview uses DOM text nodes, never HTML from a document. References and
    attachments resolve only inside the selected handle. Embeds are bounded. */
-async function renderMarkdown(text,root,tab,depth){
-  const idTargets=tab.wiki&&global.WikiCore?knowledgeGraph():null;
+async function renderMarkdown(text,root,tab,depth,context={instance:state.instance,graph:null}){
+  const idTargets=()=>context.graph??(context.graph=knowledgeGraph());
   root.replaceChildren();let body=global.WikiCore.parseDocument(text).body;
-  const lines=body.split(/\r?\n/);let fence=null,code=null,list=null,table=null,comment=false;
+  const lines=body.split(/\r?\n/),footnotes=new Map(),references=[];let footFence=false;for(let i=0;i<lines.length;i++){if(/^\s*(```|~~~)/.test(lines[i]))footFence=!footFence;if(footFence)continue;const f=/^\[\^([^\]\s]+)\]:\s*(.*)$/.exec(lines[i]);if(f){let note=f[2];while(/^ {4}\S|^ {4}$/.test(lines[i+1]||''))note+='\n'+lines[++i].slice(4);footnotes.set(f[1],note);}}let fence=null,code=null,list=null,table=null,comment=false;
   function inline(text,parent){
-    const re=/(!?)\[\[([^\]]+)\]\]|(!?)\[([^\]]*)\]\(([^)]+)\)|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(~~[^~]+~~)|(==[^=]+==)/g;
+    const re=/(!?)\[\[([^\]]+)\]\]|(!?)\[([^\]]*)\]\(([^)]+)\)|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(~~[^~]+~~)|(==[^=]+==)|(<u>[^<>]*<\/u>)|(\$[^$\n]+\$)|(\[\^([^\]\s]+)\])/g;
     let at=0,m;
     while((m=re.exec(text))){parent.append(global.document.createTextNode(text.slice(at,m.index)));at=re.lastIndex;
       if(m[2]||m[5]){
         const target=m[2]||m[5],label=m[2]?m[2].split("|").pop():m[4],embed=m[1]||m[3];
-        if(embed){const box=el("span","ws-embed",label);parent.append(box);embedTarget(tab,target,box,depth).catch(error=>{global.I18n.setText(box,global.I18n.fromError(error));});}
+        if(embed){const box=el("span","ws-embed",label);parent.append(box);embedTarget(tab,target,box,depth,context).catch(error=>{global.I18n.setText(box,global.I18n.fromError(error));});}
         else if(/^https?:/i.test(target)){const a=el("a","ws-inline-link",label);a.href=target;a.target="_blank";a.rel="noopener noreferrer";parent.append(a);}
-        else{const b=button(label,()=>followLink(tab,target),null,"ws-inline-link");parent.append(b);if(idTargets&&/^[0-9A-HJKMNP-TV-Z]{26}$/.test(label))idTargets.then(view=>{const p=global.WikiCore.resolve(view,tab.wiki,tab.name,target);if(p?.head.title)b.textContent=p.head.title;}).catch(()=>{});}
-      }else{const v=m[6]||m[7]||m[8]||m[9]||m[10],tag=m[6]?"code":m[7]?"strong":m[8]?"em":m[9]?"del":"mark",cut=m[7]||m[9]||m[10]?2:1;parent.append(el(tag,"",v.slice(cut,-cut)));}
+        else{const b=button(label,()=>followLink(tab,target),null,"ws-inline-link");parent.append(b);if(tab.wiki&&global.WikiCore&&/^[0-9A-HJKMNP-TV-Z]{26}$/.test(label))idTargets().then(async view=>{if(context.instance!==state.instance||!b.isConnected||await F().permissionState(state.handles.get(tab.folder),'read')!=='granted')return;const p=global.WikiCore.resolve(view,tab.wiki,tab.name,target);if(p?.head.title)b.textContent=p.head.title;}).catch(()=>{});}
+      }else if(m[11])parent.append(el('u','',m[11].slice(3,-4)));
+      else if(m[12]){const formula=el('span');global.WikiCore.renderFormula(formula,m[12].slice(1,-1));parent.append(formula);}
+      else if(m[13]){const id=m[14],number=references.includes(id)?references.indexOf(id)+1:references.push(id),sup=el('sup'),link=el('a','',String(number));link.setAttribute('role','doc-noteref');link.href='#footnote-'+encodeURIComponent(id);link.addEventListener('click',event=>{event.preventDefault();root.querySelector('[data-footnote="'+CSS.escape(id)+'"]')?.focus();});sup.append(link);parent.append(sup);}
+      else{const v=m[6]||m[7]||m[8]||m[9]||m[10],tag=m[6]?"code":m[7]?"strong":m[8]?"em":m[9]?"del":"mark",cut=m[7]||m[9]||m[10]?2:1;parent.append(el(tag,"",v.slice(cut,-cut)));}
     }parent.append(global.document.createTextNode(text.slice(at)));
   }
   for(let i=0;i<lines.length;i++){
@@ -1214,7 +1219,9 @@ async function renderMarkdown(text,root,tab,depth){
     if(comment){if(line.includes('-->')){comment=false;line=line.slice(line.indexOf('-->')+3);}else continue;}
     line=line.replace(/<!--.*?-->/g,'');if(line.includes('<!--')){comment=true;line=line.slice(0,line.indexOf('<!--'));}
     const callout=/^>\s*\[!([^\]]+)\]([-+]?)\s*(.*)$/.exec(line);
-    if(callout){const box=el('details','ws-callout'),summary=el('summary','',callout[3]||callout[1]),content=el('div');box.open=callout[2]!=='-';box.dataset.callout=callout[1];box.append(summary,content);root.append(box);const quoted=[];while(i+1<lines.length&&/^>/.test(lines[i+1]))quoted.push(lines[++i].replace(/^> ?/,''));await renderMarkdown(quoted.join('\n'),content,tab,depth);list=null;table=null;continue;}
+    if(callout){const box=el('details','ws-callout'),summary=el('summary','',callout[3]||callout[1]),content=el('div');box.open=callout[2]!=='-';box.dataset.callout=callout[1];box.append(summary,content);root.append(box);const quoted=[];while(i+1<lines.length&&/^>/.test(lines[i+1]))quoted.push(lines[++i].replace(/^> ?/,''));await renderMarkdown(quoted.join('\n'),content,tab,depth,context);list=null;table=null;continue;}
+    if(/^\[\^([^\]\s]+)\]:/.test(line)){while(/^ {4}/.test(lines[i+1]||''))i++;continue;}
+    if(line.trim().startsWith('$$')){let formula=line.trim().slice(2);if(formula.endsWith('$$'))formula=formula.slice(0,-2);else{while(i+1<lines.length&&!lines[i+1].trim().endsWith('$$'))formula+='\n'+lines[++i];if(i+1<lines.length)formula+='\n'+lines[++i].replace(/\$\$\s*$/,'');}const box=el('div');global.WikiCore.renderFormula(box,formula,true);root.append(box);list=null;table=null;continue;}
     if(!line.trim()){list=null;table=null;continue;}
     if(line.includes("|")&&((lines[i+1]||"").match(/^\s*\|?\s*:?-{3,}/)||table)){
       if(!table){table=el("table");root.append(table);const row=el("tr");for(const cell of line.replace(/^\||\|$/g,"").split("|")){const th=el("th");inline(cell.trim(),th);row.append(th);}table.append(row);i+=1;}
@@ -1227,8 +1234,9 @@ async function renderMarkdown(text,root,tab,depth){
     if(m){if(!list){list=el(/^\s*\d/.test(line)?"ol":"ul");root.append(list);}const li=el("li"),task=/^\[([ xX])\]\s*(.*)$/.exec(m[1]);if(task){const c=el("input");c.type="checkbox";c.checked=task[1]!==" ";c.disabled=true;li.append(c);inline(task[2],li);}else inline(m[1],li);list.append(li);continue;}
     list=null;const node=el(line.startsWith(">")?"blockquote":"p");inline(line.replace(/^>\s?/ ,""),node);root.append(node);
   }
+  if(footnotes.size){const section=el('section','ws-footnotes'),list=el('ol');section.setAttribute('role','doc-endnotes');section.append(el('h3','',msg('Footnotes')),list);for(const id of [...new Set([...references,...footnotes.keys()])])if(footnotes.has(id)){const item=el('li');item.dataset.footnote=id;item.tabIndex=-1;inline(footnotes.get(id),item);list.append(item);}root.append(section);}
 }
-async function embedTarget(tab,target,box,depth){
+async function embedTarget(tab,target,box,depth,context){
   if(depth>=2){global.I18n.setText(box,msg("Embedding depth reached: {target}",{target}));return;}
   const path=targetPath(tab.name,target);if(!path)throw global.I18n.error(msg("Only local embeds are displayed."));
   const files=[...(state.files.get(tab.folder)||[]),...(assetFiles.get(tab.folder)||[])];const resolved=global.WikiCore.resolveAsset(tab.name,target,files.map(f=>f.name));const match=files.find(f=>f.name===resolved);
@@ -1237,17 +1245,26 @@ async function embedTarget(tab,target,box,depth){
   const dir=state.handles.get(tab.folder);
   if(/\.(png|jpe?g|gif|webp|avif)$/i.test(match.name)){
     let h=dir;const parts=match.name.split("/");for(const part of parts.slice(0,-1))h=await h.getDirectoryHandle(part);const file=await(await h.getFileHandle(parts[parts.length-1])).getFile();const url=URL.createObjectURL(file),img=el("img");img.alt=target;img.onload=()=>URL.revokeObjectURL(url);img.onerror=()=>URL.revokeObjectURL(url);img.src=url;box.replaceChildren(img);
-  }else if(match.name.endsWith(".md")){const seen=await F().readFile(dir,match.name);await renderMarkdown(seen.text,box,{folder:tab.folder,name:match.name},depth+1);}
+  }else if(match.name.endsWith(".md")){const seen=await F().readFile(dir,match.name);await renderMarkdown(seen.text,box,{folder:tab.folder,wiki:tab.wiki,name:match.name},depth+1,context);}
   else{global.I18n.setText(box,msg("Original: {name}",{name:match.name}));}
 }
 function renderLiveAssets(){
  const tab=state.active;if(!tab||state.mode!=='live')return;
  const lines=Array.from(at('ws-editor').children);let fence=null,comment=false;
+ for(const line of lines){line.classList.remove('ws-live-formula','ws-live-formula-editing');line.querySelector('[data-writing-decoration="formula-block"]')?.remove();}
  for(let i=0;i<lines.length;i++){
   const line=lines[i],raw=global.writingRawText(line),marker=/^ {0,3}(`{3,}|~{3,})/.exec(raw);
   line.classList.remove('ws-hidden-markup','ws-live-callout');
   if(marker){if(!fence)fence=marker[1];else if(marker[1][0]===fence[0]&&marker[1].length>=fence.length)fence=null;continue;}if(fence)continue;
   if(comment||/^\s*<!--/.test(raw)){line.classList.add('ws-hidden-markup');comment=!raw.includes('-->');continue;}
+  if(/^\s*\$\$\s*$/.test(raw)){
+   let end=i+1;while(end<lines.length&&!/^\s*\$\$\s*$/.test(global.writingRawText(lines[end])))end++;
+   if(end<lines.length){const group=lines.slice(i,end+1),formula=group.slice(1,-1).map(global.writingRawText).join('\n'),editing=group.some(n=>n.classList.contains('aktiv')),box=el('span');box.setAttribute('data-writing-decoration','formula-block');box.contentEditable='false';line.append(box);global.WikiCore.renderFormula(box,formula,true);
+    // Keep the raw lines and their boxes intact, even when the whole formula
+    // is active. A decoration never becomes part of the saved buffer.
+    const height=box.getBoundingClientRect().height;group.forEach(n=>{n.classList.add('ws-live-formula');n.classList.toggle('ws-live-formula-editing',editing);});line.style.minHeight=Math.max(parseFloat(getComputedStyle(line).lineHeight)||0,height+4)+'px';i=end;continue;
+   }
+  }
   if(/^>\s*\[!(?:relation-in|source)\]-/.test(raw)){
    const group=[raw];let j=i+1;for(;j<lines.length&&/^>/.test(global.writingRawText(lines[j]));j++){group.push(global.writingRawText(lines[j]));lines[j].classList.add('ws-hidden-markup');}
    const text=group.join('\n');line.classList.add('ws-live-callout');let box=line.querySelector('[data-writing-decoration="callout"]');
@@ -1255,6 +1272,15 @@ function renderLiveAssets(){
   }else line.querySelector('[data-writing-decoration="callout"]')?.remove();
  }
 
+ for(const line of at('ws-editor').children){
+  const parts=Array.from(line.children);for(let index=0;index<parts.length;index++){
+   if(!parts[index].matches('.stueck.math'))continue;const group=[parts[index]];while(parts[index+1]?.matches('.stueck.math'))group.push(parts[++index]);
+   const raw=group.map(n=>n.textContent).join(''),display=raw.startsWith('$$'),cut=display?2:1;if(!raw.startsWith('$')||!raw.endsWith('$'))continue;
+   const last=group.at(-1);let box=last.nextElementSibling;if(box?.getAttribute('data-writing-decoration')!=='formula'){box=el('span');box.setAttribute('data-writing-decoration','formula');box.contentEditable='false';last.after(box);}
+   if(box.dataset.formula!==raw){box.dataset.formula=raw;global.WikiCore.renderFormula(box,raw.slice(cut,-cut),display);}
+   group.forEach(n=>n.classList.add('ws-formula-source'));box.style.display='inline-block';line.style.minHeight=Math.max(parseFloat(getComputedStyle(line).lineHeight)||0,box.getBoundingClientRect().height+4)+'px';box.style.removeProperty('display');
+  }
+ }
  for(const line of at('ws-editor').children){
   if(line.querySelector('.ws-live-asset'))continue;
   const re=/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\(([^)]+)\)/g;
@@ -1348,6 +1374,36 @@ function insertEditorText(text,span){
  if(state.mode==='source'){const node=at('ws-source'),where=span||{from:node.selectionStart,to:node.selectionEnd};node.setRangeText(text,where.from,where.to,'end');node.focus();changed(node.value);}
  else state.sheet.replace(span||global.writingSpan(at('ws-editor')),text);
 }
+async function relationshipDialog(){
+ if(!state.active?.wiki||state.mode==='read'||!currentFolder().writable)return;collect();const tab=state.active,original=tab.text,view=await knowledgeGraph();if(state.active!==tab||tab.text!==original)return;
+ const d=modal(msg('Relationship')),direction=select(d.content,msg('Direction'),[['out',msg('Starts from this note')],['in',msg('Points to this note')]],'out'),type=select(d.content,msg('Relationship type'),[],''),target=select(d.content,msg('Target note'),[],''),reason=field(d.content,msg('Reason'),'','textarea'),hint=el('p','ws-muted'),error=el('p');error.setAttribute('role','alert');d.content.append(hint,error);
+ const labels={references:'Refers to',refines:'Refines',contradicts:'Contradicts',superseded_by:'Is superseded by',part_of:'Is part of',decides:'Decides',learned_from:'Learned from'};let options=[];
+ const fill=(node,values)=>{const selected=node.value;node.replaceChildren();for(const [value,label]of values){const o=el('option','',label);o.value=value;node.append(o);}if(values.some(v=>v[0]===selected))node.value=selected;};
+ function targets(){fill(target,options.filter(o=>o.type===type.value).map(o=>[JSON.stringify([o.wiki,o.page]),(state.data.folders.find(w=>w.id===o.wiki)?.label||o.wiki)+' / '+o.title+' · '+o.page]));}
+ function choices(){options=global.WikiCore.relationshipOptions(view,{wiki:tab.wiki,page:tab.name,text:original,direction:direction.value});fill(type,[...new Set(options.map(o=>o.type))].map(t=>[t,labels[t]?msg(labels[t]):t]));targets();global.I18n.setText(hint,msg(direction.value==='in'?'The relationship is added to the note it starts from. That note opens for editing.':'The relationship is added to this draft and saved with your other changes.'));}
+ direction.addEventListener('change',choices);type.addEventListener('change',targets);choices();
+ d.foot.append(button(msg('Insert'),async()=>{try{
+  if(state.active!==tab||tab.text!==original)throw global.I18n.error(msg('The note changed while the dialog was open. Reopen the dialog.'));
+  if(!target.value)return;const [targetWiki,targetPage]=JSON.parse(target.value),draft=global.WikiCore.relationshipDraft(view,{wiki:tab.wiki,page:tab.name,text:original,direction:direction.value,type:type.value,targetWiki,targetPage,reason:reason.value});
+  const folder=workingFolder(draft.wiki),dir=state.handles.get(folder);if(!dir||await F().permissionState(dir,'readwrite')!=='granted')throw global.I18n.error(msg('The folder was disconnected.'));
+  await global.WikiCore.validateEdit(dir,draft.page,draft.text,F(),R());if(state.active!==tab||tab.text!==original)throw global.I18n.error(msg('The note changed while the dialog was open. Reopen the dialog.'));
+  if(draft.wiki!==tab.wiki||draft.page!==tab.name){await openWikiFile(draft.wiki,draft.page);if(state.active?.text!==draft.before)throw global.I18n.error(msg('The note changed while the dialog was open. Reopen the dialog.'));}
+  d.dialog.close();if(state.mode==='source'){at('ws-source').value=draft.text;changed(draft.text);at('ws-source').focus();}
+  else{const parsed=global.WikiCore.parseDocument(draft.text),prior=global.WikiCore.parseDocument(state.active.text);(state.active.relationshipHistory||=[]).push({before:prior.body,after:parsed.body,relatedBefore:prior.head.related??[],relatedAfter:parsed.head.related});state.editorPrefix=draft.text.slice(0,parsed.offset);state.sheet.replace({from:0,to:state.sheet.value.length},parsed.body);collect();}
+  renderProperties();
+ }catch(e){global.I18n.setText(error,global.I18n.fromError(e));}}));reason.focus();
+}
+function insertFootnote(){
+ if(!state.active||state.mode==='read'||!currentFolder().writable)return;const tab=state.active,original=tab.text,mode=state.mode,span=mode==='source'?{from:at('ws-source').selectionStart,to:at('ws-source').selectionEnd}:global.writingSpan(at('ws-editor'));
+ const d=modal(msg('Footnote')),text=field(d.content,msg('Footnote text'),'','textarea');
+ d.foot.append(button(msg('Insert'),()=>{if(!text.value.trim())return;if(state.active!==tab||tab.text!==original||state.mode!==mode)throw global.I18n.error(msg('The note changed while the dialog was open. Reopen the dialog.'));
+  let id=1;while(tab.text.includes('[^'+id+']'))id++;const marker='[^'+id+']',definition='\n\n'+marker+': '+text.value.trim().replace(/\n/g,'\n    ')+'\n';d.dialog.close();
+  // Preserve selected prose; append its reference and a unique definition in one undo step.
+  const value=mode==='source'?at('ws-source').value:state.sheet.value,changedText=value.slice(0,span.to)+marker+value.slice(span.to)+definition;
+  if(mode==='source'){at('ws-source').value=changedText;changed(changedText);at('ws-source').focus();at('ws-source').setSelectionRange(span.to+marker.length,span.to+marker.length);}
+  else state.sheet.replace({from:0,to:value.length},changedText);
+ }));text.focus();
+}
 function insertLink(image=false){
  if(!state.active||state.mode==='read')return;const tab=state.active;
  const span=state.mode==='source'?{from:at('ws-source').selectionStart,to:at('ws-source').selectionEnd}:global.writingSpan(at('ws-editor'));
@@ -1403,8 +1459,8 @@ async function writableTab(tab){
     (bound.path===null&&dir!==tab.dir&&(!dir.isSameEntry||!await dir.isSameEntry(tab.dir))))throw global.I18n.error(msg('The folder connection or write permission changed. Reopen the project.'));
   if(await F().grantPermission(dir,'readwrite')!=='granted')throw global.I18n.error(msg('No write permission. Open Settings and connect the folder for writing.'));
 }
-async function savedReview(tab,done,{preserveEditing=false,submitted=null}={}){
-  if(!preserveEditing&&done.saved&&done.recorded&&!done.index_deferred&&!done.index_updated&&!done.index_error)try{await global.WikiCore.updateIndex(tab.dir,F(),R());}catch(error){done.index_error=error.message;}
+async function savedReview(tab,done,{preserveEditing=false,submitted=null,refreshIndex=!preserveEditing}={}){
+  if(refreshIndex&&done.saved&&done.recorded&&!done.index_deferred&&!done.index_updated&&!done.index_error)try{await global.WikiCore.updateIndex(tab.dir,F(),R());}catch(error){done.index_error=error.message;}
   const journal=await R().read(tab.dir,tab.name);
   const newer=preserveEditing&&tab.text!==submitted;
   if(!newer)tab.text=done.text;tab.origin=done.text;tab.mark=done.mark;
@@ -1416,7 +1472,7 @@ async function savedReview(tab,done,{preserveEditing=false,submitted=null}={}){
   if(tab.text!==tab.origin)scheduleAutosave(tab);
   renderTabs();await pollReviews();if(state.graphOpen)await renderGraph();
   if(done.index_error)status(msg("The note is saved; index refresh needs attention: {reason}",{reason:done.index_error}));
-  else if(done.recorded){status(msg(done.unchanged?'No changes. Your comparison baseline is up to date.':'Saved with your author name.'));tab.pendingRecord=null;}
+  else if(done.recorded){status(msg(tab.text!==tab.origin?'Earlier changes saved. Your latest edits are waiting to be saved.':done.unchanged?'No changes. Your comparison baseline is up to date.':'Saved with your author name.'));tab.pendingRecord=null;}
   else{tab.pendingRecord=done.event;status(msg('The file was saved, but its author record is incomplete. Open the comparison to retry the record.'));}
 }
 function reviewTime(value){const date=new Date(value);return Number.isFinite(date.valueOf())?date.toLocaleString(global.I18n.language()==='de'?'de-DE':'en-GB',{dateStyle:'medium',timeStyle:'short'}):msg('Time unknown');}
@@ -1684,7 +1740,7 @@ function build(){
   const empty=el("section","ws-empty");empty.id="ws-empty";empty.append(icon("book"),el("p","ws-eyebrow",msg("YOUR KNOWLEDGE. YOUR FILES.")),el("h1","",msg("Room for connections.")),el("p","",msg("Connect your wikis and sources. Write here or in your own editor. Everything stays in your files.")),button(msg("Open project folder"),chooseProject,null,"ws-primary"),el("small","ws-muted",msg("Set up once. Then get straight to work.")));
   const doc=el("section","ws-document");doc.id="ws-document";doc.hidden=true;
   const toolbar=el("div","ws-toolbar"),more=el('div','ws-format-menu');more.setAttribute('popover','auto');toolbar.append(more);toolbar.setAttribute("role","toolbar");global.I18n.setAttribute(toolbar,"aria-label",msg("Format text"));
-  for(const [form,label]of[["bold",msg("Bold")],["italic",msg("Italic")],["strike",msg("Strikethrough")],["link",msg("Link")],["image",msg("Image / attachment")],["list",msg("Bullet list")],["list-ordered",msg("Numbered list")],["task",msg("Task")],["table",msg("Table")],["quote",msg("Quote")],["code",msg("Inline code")],["code-block",msg("Code")],["rule",msg("Horizontal rule")]]){const b=button(label,()=>form==='link'||form==='image'?insertLink(form==='image'):applyForm(form),{strike:'strikethrough',link:'link',image:'image',list:'list','list-ordered':'list-ordered',code:'code-xml',rule:'minus',bold:"bold",italic:"italic","heading-2":"heading-2",wikilink:"link",embed:"image",task:"list-todo",table:"table",quote:"quote","code-block":"code-xml"}[form]);b.dataset.format=form;b.addEventListener('mousedown',e=>e.preventDefault());if(['bold','italic','link','list'].includes(form))toolbar.append(b);else{b.append(el('span','',label));b.addEventListener('click',()=>more.hidePopover());more.append(b);}}const headings=el('select');headings.setAttribute('aria-label',msg('Heading'));headings.append(new Option(msg('Heading'),''));for(let n=1;n<=6;n++)headings.append(new Option('H'+n,'heading-'+n));let headingSpan;headings.addEventListener('pointerdown',()=>{headingSpan=state.mode==='source'?{from:at('ws-source').selectionStart,to:at('ws-source').selectionEnd}:global.writingSpan(at('ws-editor'));});headings.addEventListener('change',()=>{if(headings.value){applyForm(headings.value,headingSpan);}headings.value='';});toolbar.append(headings,button(msg('Undo'),()=>editorUndo(),'undo-2'),button(msg('Redo'),()=>editorUndo(true),'redo-2'),button(msg("Find / Replace"),findDialog,"text-search"));
+  for(const [form,label]of[["bold",msg("Bold")],["italic",msg("Italic")],["strike",msg("Strikethrough")],["underline",msg("Underline")],["highlight",msg("Highlight")],["math",msg("Formula")],["callout",msg("Callout")],["footnote",msg("Footnote")],["relationship",msg("Relationship")],["link",msg("Link")],["image",msg("Image / attachment")],["list",msg("Bullet list")],["list-ordered",msg("Numbered list")],["task",msg("Task")],["table",msg("Table")],["quote",msg("Quote")],["code",msg("Inline code")],["code-block",msg("Code")],["rule",msg("Horizontal rule")]]){const b=button(label,()=>form==='link'||form==='image'?insertLink(form==='image'):form==='footnote'?insertFootnote():form==='relationship'?relationshipDialog():applyForm(form),{relationship:'git-compare-arrows',underline:'underline',highlight:'highlighter',math:'sigma',callout:'message-square',footnote:'superscript',strike:'strikethrough',link:'link',image:'image',list:'list','list-ordered':'list-ordered',code:'code-xml',rule:'minus',bold:"bold",italic:"italic","heading-2":"heading-2",wikilink:"link",embed:"image",task:"list-todo",table:"table",quote:"quote","code-block":"code-xml"}[form]);b.dataset.format=form;b.addEventListener('mousedown',e=>e.preventDefault());if(['bold','italic','link','list'].includes(form))toolbar.append(b);else{b.append(el('span','',label));b.addEventListener('click',()=>more.hidePopover());more.append(b);}}const headings=el('select');headings.setAttribute('aria-label',msg('Heading'));headings.append(new Option(msg('Heading'),''));for(let n=1;n<=6;n++)headings.append(new Option('H'+n,'heading-'+n));let headingSpan;headings.addEventListener('pointerdown',()=>{headingSpan=state.mode==='source'?{from:at('ws-source').selectionStart,to:at('ws-source').selectionEnd}:global.writingSpan(at('ws-editor'));});headings.addEventListener('change',()=>{if(headings.value){applyForm(headings.value,headingSpan);}headings.value='';});toolbar.append(headings,button(msg('Undo'),()=>editorUndo(),'undo-2'),button(msg('Redo'),()=>editorUndo(true),'redo-2'),button(msg("Find / Replace"),findDialog,"text-search"));
   toolbar.lastElementChild.dataset.readAction='true';const moreButton=button(msg('More formatting'),()=>{const r=moreButton.getBoundingClientRect();more.style.left=Math.min(r.left,global.innerWidth-250)+'px';more.style.top=r.bottom+'px';more.togglePopover();},'menu');moreButton.addEventListener('mousedown',e=>e.preventDefault());toolbar.append(moreButton);headings.addEventListener('focus',()=>{headingSpan=state.mode==='source'?{from:at('ws-source').selectionStart,to:at('ws-source').selectionEnd}:global.writingSpan(at('ws-editor'));});
   const editor=el("div","schreibflaeche ws-editor");editor.id="ws-editor";editor.contentEditable="true";editor.setAttribute("role","textbox");global.I18n.setAttribute(editor,"aria-label",msg("Edit Markdown"));editor.setAttribute("aria-multiline","true");editor.spellcheck=true;
   const source=el("textarea","ws-source");source.id="ws-source";global.I18n.setAttribute(source,"aria-label",msg("Markdown source"));source.hidden=true;source.addEventListener('input',()=>changed(source.value));source.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&['z','y'].includes(event.key.toLowerCase())){event.preventDefault();editorUndo(event.shiftKey||event.key.toLowerCase()==='y');}});

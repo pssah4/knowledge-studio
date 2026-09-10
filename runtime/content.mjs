@@ -5,7 +5,8 @@ import {projectMetadata,stripNavigation,parseDocument,newDocument,listValue,mirr
 import {readRegister} from './core/ontology.mjs';
 import {buildGraph,resolveEvidence,resolvePage} from './core/graph.mjs';
 import {requireThat,nonempty,relativePath} from './core/errors.mjs';
-import {save} from './review.mjs';
+import {save,sync,handle} from './review.mjs';
+import {noteContract,reviewAdvisories} from './core/note-contract.mjs';
 
 export const STATUS_VALUES=Object.freeze(['draft','stable','deprecated']);
 export function identity(services){let n=BigInt(Date.parse(services.now()));for(const byte of services.random(10))n=(n<<8n)|BigInt(byte);const alphabet='0123456789ABCDEFGHJKMNPQRSTVWXYZ';let id='';for(let i=0;i<26;i++){id=alphabet[Number(n&31n)]+id;n>>=5n;}return id;}
@@ -45,7 +46,7 @@ export async function refreshIndex(store){
   const files=(await store.list('')).filter(e=>e.kind==='file'&&visibleKnowledge(e.path)&&e.path!==page).map(e=>e.path).sort();
   const start='<!-- llmwiki:index:start -->',end='<!-- llmwiki:index:end -->';
   const groups=new Map();
-  for(const p of files){const {head}=parseDocument((await store.read(p)).text);if(p==='WIKI.md'||p.startsWith('test/'))continue;
+  for(const p of files){const {head}=parseDocument((await store.read(p)).text);if(p==='WIKI.md'||p.startsWith('test/')||head.llmwiki_redirect)continue;
     const group=({bundle:'Über dieses Wiki',topic:'Themen',entity:'Gegenstände und Personen',source:'Quellen'})[head.type]||'Weitere Wissensseiten';
     if(!groups.has(group))groups.set(group,[]);
     groups.get(group).push('- '+markdownLink(page,p,head.title)+' · `'+head.type+'` — '+String(head.description??'').replace(/[\r\n]/g,' '));}
@@ -74,7 +75,8 @@ export async function validateNote(store,{page,text},{allowPlainExisting=false,f
   requireThat(Array.isArray(parsed.head.related),'related','Related must be a Markdown link list.');
   const genus=register.genera.get(parsed.head.type);requireThat(genus,'ontology','Choose a registered document type.');
   requireThat(STATUS_VALUES.includes(parsed.head.status),'status','Choose draft, stable or deprecated.');
-  if(parsed.head.status==='stable')for(const key of genus.required)requireThat(parsed.head[key]!==undefined&&parsed.head[key]!==null,'head','Required stable field missing: '+key);
+  const findings=noteContract(parsed,register);
+  requireThat(!findings.length,'head_contract','This version is missing required information or sections for its document type.',{page,findings});
   return parsed;
 }
 export async function writeNote(store,{page,text,author,expected}){
@@ -103,13 +105,16 @@ export async function sourceIntegrity(store,parsed){
   return {complete:findings.length===0,findings};
 }
 export async function readiness(wikis){
-  const graph=await buildGraph(wikis),findings=[...graph.failures,...graph.findings],source_pages=[];
+  const graph=await buildGraph(wikis),findings=[...graph.failures,...graph.findings],source_pages=[],advisories=[];
   for(const scope of graph.scopes.values()){
+    findings.push(...(await sync.checkClearance(handle(scope.store))).map(f=>({...f,wiki:scope.id})));
     const bundle=await scope.store.read('wiki/bundle.md'),index=await scope.store.read('wiki/index.md');
     const purpose=bundle?sectionText(parseDocument(bundle.text).body,['Zweck','Purpose']):'';
     if(!purpose||/Noch nicht geschrieben|Not yet written/i.test(purpose))findings.push({code:'bundle_purpose_missing',wiki:scope.id});
     if(!index)findings.push({code:'directory_missing',wiki:scope.id});
     for(const page of graph.pages.values())if(page.wiki===scope.id){
+      findings.push(...noteContract(page,scope.register).map(f=>({...f,wiki:scope.id,page:page.path})));
+      advisories.push(...reviewAdvisories(page,scope.register,scope.store.services.now()).map(f=>({...f,wiki:scope.id,page:page.path})));
       const issue=code=>findings.push({code,wiki:scope.id,page:page.path});
       if(!page.head.title||!page.head.description||!scope.register?.genera.has(page.head.type))issue('metadata_missing');
       if(!page.head.id)issue('identity_missing');
@@ -137,5 +142,5 @@ export async function readiness(wikis){
       for(const id of listValue(page.head.sources))if(!resolveEvidence(graph,id,page.wiki))issue('evidence_unresolved');
     }
   }
-  return {ready:!findings.length,findings,pages:graph.pages.size,source_pages};
+  return {ready:!findings.length,findings,advisories,pages:graph.pages.size,source_pages};
 }

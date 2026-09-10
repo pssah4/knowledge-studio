@@ -1,5 +1,28 @@
 # Runtime contract
 
+For Node calls in both skills, the runtime bounds filesystem reads and supervises
+its worker inside the existing sandbox. A filesystem timeout is an incomplete
+operation, never proof of missing knowledge. Read `error.code/message/details`;
+`runtime_read_timeout` identifies the affected path. Do not retry with `2>&1`,
+`; echo EXIT:$?`, `cat`, or a temporary-file redirect. Do not change the host or its
+grants. For a read-only query, retain the question and retry the exact request at
+most once; if it blocks again, report the affected file and the incomplete scope.
+A connection-scoped query may answer a narrower, explicitly disclosed question;
+never silently omit an inaccessible connection. For an interrupted mutation, inspect
+current state before retrying: `partial_changes_possible` is not a rollback.
+The same protection applies to the separate HTML answer helper. Never claim an
+answer file was generated or opened after a failed export.
+
+On Node, `sync` is resumable too. For EACH connection, execute every exact
+`next_request` until it is null; retain all returned conflicts and pending findings.
+`sync_complete` covers transfers only; graph and shadow stages also need their
+continuations. `complete:false` must be explained even when the process exits 0.
+A `blocked` result has no automatic next step: retry its `resume_request` at most
+once, then report the named unresolved file if it blocks again. Never continue the
+maintenance as complete, skip clearance, edit the checkpoint or broaden access.
+A stale cursor needs a fresh sync; saved Markdown and review history remain intact.
+
+
 The body describes the method; this file contains the calls for this package's host.
 Never install Python, LibreOffice, Pandoc, npm packages or system software on a user machine.
 All JavaScript libraries and editor assets travel in this package. A runtime supplied by

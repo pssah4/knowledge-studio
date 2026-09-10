@@ -1,5 +1,10 @@
 # Query runtime: read existing knowledge
 
+This is supplementary detail. The loaded SKILL.md contains the startup calls and
+host instructions; do not require this file to load before inspect/query. An optional
+documentation timeout does not cancel the original question. Continue with the loaded
+contract and executable --help; never bypass an access-denied result.
+
 The wiki entrypoint performs retrieval only. It must never conduct setup, collect setup
 answers, create knowledge folders, write settings, run ingestion, synchronize or update the
 editor. The complementary maintain-llm-wiki skill owns those operations. Do not
@@ -56,4 +61,4 @@ by maintain; retrieval neither regenerates them nor changes knowledge files.
 On Node, a separately documented presentation helper can create a new HTML answer
 when the host needs it for clickable citations; this does not permit knowledge writes.
 
-On Node, use [answer.md](answer.md) for the optional browser-answer presentation helper.
+On Node, answer.mjs --help returns the presentation contract without reading reference files.

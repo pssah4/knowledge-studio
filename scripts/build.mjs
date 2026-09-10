@@ -17,7 +17,32 @@ const root=fileURLToPath(new URL('../',import.meta.url)),version=JSON.parse(awai
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 export async function files(dir,prefix=''){const out=[];for(const entry of (await fs.readdir(path.join(dir,prefix),{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){const rel=prefix?prefix+'/'+entry.name:entry.name;if(entry.isSymbolicLink())throw Error('Build input contains a symlink: '+rel);if(entry.isDirectory())out.push(...await files(dir,rel));else if(entry.isFile())out.push(rel);}return out;}
 async function put(dir,name,content){await fs.mkdir(path.dirname(path.join(dir,name)),{recursive:true});await fs.writeFile(path.join(dir,name),content);}
-async function licenses(){const records=[];for(const name of ['yaml','fflate','fast-xml-parser','fast-xml-builder','strnum','path-expression-matcher','pdfjs-dist','@nodable/entities','anynum','is-unsafe','xml-naming']){const dir=path.join(root,'node_modules',name);let pkg;try{pkg=JSON.parse(await fs.readFile(path.join(dir,'package.json'),'utf8'));}catch{continue;}for(const file of await fs.readdir(dir))if(/^(LICENSE|LICENCE|COPYING)/i.test(file))records.push({name:'assets/licenses/'+name.replace(/[^\w.-]/g,'_')+'-'+file.replace(/[^\w.-]/g,'_'),text:await fs.readFile(path.join(dir,file))});}records.push({name:'assets/licenses/skill-build-LICENSE',text:await fs.readFile(path.join(root,'vendor/skill-build/LICENSE'))});return records;}
+async function licenses(){const records=[];for(const name of ['katex','commander','yaml','fflate','fast-xml-parser','fast-xml-builder','strnum','path-expression-matcher','pdfjs-dist','@nodable/entities','anynum','is-unsafe','xml-naming']){const dir=path.join(root,'node_modules',name);let pkg;try{pkg=JSON.parse(await fs.readFile(path.join(dir,'package.json'),'utf8'));}catch{continue;}for(const file of await fs.readdir(dir))if(/^(LICENSE|LICENCE|COPYING)/i.test(file))records.push({name:'assets/licenses/'+name.replace(/[^\w.-]/g,'_')+'-'+file.replace(/[^\w.-]/g,'_'),text:await fs.readFile(path.join(dir,file))});}records.push({name:'assets/licenses/skill-build-LICENSE',text:await fs.readFile(path.join(root,'vendor/skill-build/LICENSE'))});return records;}
+/** Remove only recognized outputs from the former flat distribution layout.
+ * Canonical scopes and current test data are retained; never follow directory links. */
+export async function removeObsoleteOutputs({projectRoot=root,currentVersion=version,profileIds=[],skillNames=[]}={}){
+ const dist=path.join(projectRoot,'dist');
+ let info;try{info=await fs.lstat(dist);}catch(error){if(error.code==='ENOENT')return [];throw error;}
+ if(info.isSymbolicLink()||!info.isDirectory())throw Error('Distribution root must be a real directory');
+ const legacyProfiles=new Set(profileIds),legacySkills=new Set(skillNames.flatMap(name=>[name+'.skill',name+'.skill.sha256']));
+ // Include the other matrix without loading its private configuration.
+ for(const scope of ['public','internal']){
+  const dir=path.join(dist,scope);let stat;try{stat=await fs.lstat(dir);}catch(error){if(error.code==='ENOENT')continue;throw error;}
+  if(stat.isDirectory()&&!stat.isSymbolicLink())for(const entry of await fs.readdir(dir,{withFileTypes:true}))if(entry.isDirectory())legacyProfiles.add(entry.name);
+ }
+ const removed=[];
+ for(const entry of await fs.readdir(dist,{withFileTypes:true})){
+  const name=entry.name;
+  if(['public','internal','README.md'].includes(name))continue;
+  const oldPackage=/^(?:llm-wiki(?:-public)?-\d+\.\d+\.\d+(?:-[\w.-]+)?\.zip(?:\.sha256)?|release-\d+\.\d+\.\d+(?:-[\w.-]+)?\.json)$/.test(name);
+  const testArchive=/^llmwiki-(fachtest|testpaket)-(\d+\.\d+\.\d+(?:-[\w.-]+)?)\.zip(?:\.sha256)?$/.exec(name);
+  const oldTest=testArchive&&(testArchive[1]==='testpaket'||testArchive[2]!==currentVersion);
+  if(legacyProfiles.has(name)||legacySkills.has(name)||oldPackage||oldTest||['app.html','SHA256SUMS.txt','llmwiki-testdaten.zip'].includes(name)){
+   await fs.rm(path.join(dist,name),{recursive:true,force:true,maxRetries:5,retryDelay:100});removed.push('dist/'+name);
+  }
+ }
+ return removed.sort();
+}
 export async function buildRelease({privateProfiles=false}={}){
  const workshop=await loadWorkshop({privateProfiles});
  const outputRoot=path.join(root,privateProfiles?'dist/internal':'dist/public'),buildRoot=path.join(root,privateProfiles?'build-internal':'build');
@@ -28,10 +53,13 @@ export async function buildRelease({privateProfiles=false}={}){
    const name=definition.name;
    const dir=path.join(stage,'build',profile.id,name),source=path.join(root,'skills',name),skill=await fs.readFile(path.join(source,'SKILL.md'),'utf8'),head=parseDocument(skill).head;
    if(head.name!==name||head.description.length>300||skill.length>24000)throw Error('Skill routing contract exceeded: '+name);
-   await put(dir,'SKILL.md',skill+(profile.skillAppend&&definition.access==='read-write'?'\n'+await fs.readFile(path.join(root,profile.skillAppend),'utf8'):''));
    const queryOnly=definition.access==='read-only',queryCall=profile.engine==='vault'?'Call run_skill_script with this structured JSON, replacing the known project root: {"skill_name":"query-llm-wiki","script_name":"wiki","args":{"action":"inspect","root":"<known vault-relative project>"}}.':'Run node "<loaded-skill>/scripts/wiki.mjs" --root "<known-project>" --input \'{"action":"inspect"}\'. Use properly quoted paths and structured request data.';
    const reference=queryOnly?(await fs.readFile(path.join(root,'platforms/query-runtime.md'),'utf8')).replace('{{CALL}}',queryCall):profile.runtimeReference?await fs.readFile(path.join(root,profile.runtimeReference),'utf8'):trimRuntimeForHost(docs,profile.section);
    const hostReference=queryOnly&&profile.queryHostReference?'\n'+await fs.readFile(path.join(root,profile.queryHostReference),'utf8'):'';
+   const hostInstructions=queryOnly?'\n## Installed host: '+profile.section+'\n\nThis package uses '+(profile.engine==='vault'?'the Vault runtime; use the Vault call below, never Node.':'Node; use the Node calls below, never the Vault entry.')+' The start contract is already in this loaded skill; no reference-file read is required before inspect/query.\n'+hostReference+'\n':profile.skillAppend?'\n'+await fs.readFile(path.join(root,profile.skillAppend),'utf8')+'\n':'';
+   const skillText=skill.replace(/^(# .+\n)/m,heading=>heading+hostInstructions);
+   if(skillText.length>24000)throw Error('Embedded skill contract exceeded: '+name);
+   await put(dir,'SKILL.md',skillText);
    const answerReference=queryOnly&&profile.engine==='node'?'\n## Browser answer output\nIf chat cannot open local editor citations, use the bundled presentation helper described in [answer.md](answer.md). It creates only a new answer HTML; wiki.mjs remains strictly read-only. Follow any host-specific opening instructions above.\n':'';
    await put(dir,'references/runtime.md',reference+hostReference+answerReference);await put(dir,'references/operations.md',await fs.readFile(path.join(root,queryOnly?'platforms/query-operations.md':'platforms/operations.md')));
    if(answerReference)await put(dir,'references/answer.md',await fs.readFile(path.join(root,'platforms/query-answer.md'),'utf8'));
@@ -42,7 +70,7 @@ export async function buildRelease({privateProfiles=false}={}){
    await put(dir,'assets/app.html',await applyEditorDesign(html,profile));
    for(const [name,file] of Object.entries(profile.assets??{}))await put(dir,name,await fs.readFile(path.join(root,file)));
    await put(dir,'assets/TYPES.md',registerText);
-   const readOnly=definition.access==='read-only',options={absWorkingDir:root,bundle:true,write:true,minify:false,legalComments:'inline',target:'es2022',define:{__LLMWIKI_ALLOW_LOCAL_BINDING__:String(profile.allowLocalBinding!==false),__LLMWIKI_PROFILE__:JSON.stringify(profile.id),__LLMWIKI_BRAND__:JSON.stringify(profile.brand??'Knowledge Studio'),__LLMWIKI_VERSION__:JSON.stringify(version),__LLMWIKI_READ_ONLY__:String(readOnly),__PDFJS_ASSETS__:'"./pdf/"',__EDITOR_HTML__:'"../assets/app.html"'}};
+   const readOnly=definition.access==='read-only',options={absWorkingDir:root,bundle:true,write:true,minify:false,legalComments:'inline',target:'es2022',define:{__LLMWIKI_ALLOW_LOCAL_BINDING__:String(profile.allowLocalBinding!==false),__LLMWIKI_HOST_OPEN_TOOL__:JSON.stringify(profile.hostOpenTool??null),__LLMWIKI_PROFILE__:JSON.stringify(profile.id),__LLMWIKI_BRAND__:JSON.stringify(profile.brand??'Knowledge Studio'),__LLMWIKI_VERSION__:JSON.stringify(version),__LLMWIKI_READ_ONLY__:String(readOnly),__PDFJS_ASSETS__:'"./pdf/"',__EDITOR_HTML__:'"../assets/app.html"'}};
    if(profile.engine==='node'){
     if(queryOnly)await build({...options,entryPoints:['runtime/answer-cli.mjs'],outfile:path.join(dir,'scripts/answer.mjs'),platform:'node',format:'esm',banner:{js:'import {createRequire as createHostRequire} from "node:module"; const require = createHostRequire(import.meta.url);'}});
     await build({...options,entryPoints:['runtime/node-cli.mjs'],outfile:path.join(dir,'scripts/wiki.mjs'),platform:'node',format:'esm',banner:{js:'import {createRequire as createHostRequire} from "node:module"; const require = createHostRequire(import.meta.url);'},plugins:[{name:'packaged-pdf',setup(b){b.onResolve({filter:/^pdfjs-dist\/legacy\/build\/pdf\.mjs$/},()=>({path:'./pdf/pdf.mjs',external:true}));}}]});
@@ -78,6 +106,7 @@ export async function buildRelease({privateProfiles=false}={}){
   await fs.mkdir(path.dirname(buildRoot),{recursive:true});await fs.rm(buildRoot,{recursive:true,force:true,maxRetries:5,retryDelay:100});await fs.rename(path.join(stage,'build'),buildRoot);
   await fs.mkdir(path.dirname(outputRoot),{recursive:true});await fs.rm(outputRoot,{recursive:true,force:true});await fs.rename(path.join(stage,'dist'),outputRoot);
   await fs.writeFile(path.join(root,'runtime/assets/app.html'),html);
+  await removeObsoleteOutputs({profileIds:profiles.map(p=>p.id),skillNames:workshop.skills.map(s=>s.name)});
   return manifest;
  }finally{await fs.rm(stage,{recursive:true,force:true});}
 }

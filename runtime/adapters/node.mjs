@@ -7,6 +7,7 @@ import {constants} from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createHash, randomBytes, randomUUID} from 'node:crypto';
+import {acquireWriter} from './node-locks.mjs';
 import {relativePath, requireThat, WikiError} from '../core/errors.mjs';
 
 export const nodeServices = {
@@ -68,6 +69,13 @@ export class NodeStore {
       return result;
     } finally { await handle.close(); }
   }
+  /** Cheap identity for validating a multi-call inventory without rehydrating bytes. */
+  async fingerprint(relative) {
+    let stat;try{stat=await fs.lstat(await this.location(relative));}
+    catch(error){if(error.code==='ENOENT')return null;throw error;}
+    requireThat(stat.isFile()&&!stat.isSymbolicLink(),'file','Select a regular file.',{path:relative});
+    return [stat.dev,stat.ino,stat.size,stat.mtimeMs,stat.ctimeMs];
+  }
   async mkdir(relative) {
     requireThat(this.writable,'read-only','Source folders are read-only.');
     const target=await this.location(relative+'/.directory-check',{createParent:true});
@@ -95,16 +103,13 @@ export class NodeStore {
     const clean=relativePath(relative), bytes=typeof content==='string'?new TextEncoder().encode(content):content;
     requireThat(bytes instanceof Uint8Array && bytes.length<=this.maxBytes,'size','Invalid or oversized write.');
     const lockRel='.llmwiki/locks/'+await nodeServices.hash(clean)+'.lock';
-    const lockPath=await this.location(lockRel,{createParent:true});let lock;
-    try { lock=await fs.open(lockPath,'wx',0o600); }
-    catch(error){if(error.code==='EEXIST')throw new WikiError('busy','Another writer is saving this file.',{path:clean});throw error;}
-    let temporary=null;
+    const lockPath=await this.location(lockRel,{createParent:true}),canonical=await fs.realpath(this.root),target=path.join(canonical,clean);
+    const writer=acquireWriter({root:canonical,target,lockPath,clean});
     try {
-      await lock.writeFile(JSON.stringify({pid:process.pid,path:clean,at:nodeServices.now()}));
       const current=await this.read(clean,{binary:true});
       requireThat((current?.sha256??null)===options.expected,'stale','The file changed since the expected baseline.',{path:clean,current:current?.sha256??null});
-      const target=await this.location(clean,{createParent:true});
-      temporary=target+'.llmwiki-'+randomUUID()+'.tmp';
+      await this.location(clean,{createParent:true});
+      const temporary=writer.temporary;
       const file=await fs.open(temporary,'wx',current?.mode??options.mode??0o666);
       try{if(current?.mode!==undefined)await file.chmod(current.mode);await file.writeFile(bytes);await file.sync();}finally{await file.close();}
       const checked=await this.read(clean,{binary:true});
@@ -113,24 +118,22 @@ export class NodeStore {
         try{await fs.link(temporary,target);}catch(error){if(error.code==='EEXIST')throw new WikiError('stale','The file was created by another writer.',{path:clean});throw error;}
         await fs.unlink(temporary);
       } else await fs.rename(temporary,target);
-      temporary=null;
       const digest=await nodeServices.hash(bytes),readback=await this.read(clean,{binary:true});
       requireThat(readback?.sha256===digest,'mismatch','The saved file changed during verification.',{path:clean});
       return {saved:true,path:clean,sha256:digest};
     } finally {
-      if(temporary)await fs.unlink(temporary).catch(()=>{});
-      await lock.close();await fs.unlink(lockPath);
+      writer.release();
     }
   }
   async archive(from,to,expected){
     requireThat(this.writable,'read-only','Sources are read-only.');
-    const seen=await this.read(from);requireThat(seen?.sha256===expected,'stale','The original changed before archiving.');
+    const seen=await this.read(from,{binary:true});requireThat(seen?.sha256===expected,'stale','The original changed before archiving.');
     const target=await this.location(to,{createParent:true}),source=await this.location(from);
-    requireThat(!await this.read(to),'exists','Archive destination already exists.');
-    await fs.link(source,target);
-    const verified=await this.read(from);requireThat(verified?.sha256===expected,'stale','The original changed while archiving; both copies are retained.');
+    const archived=await this.read(to,{binary:true});requireThat(!archived||archived.sha256===expected,'exists','Archive destination already exists with different content.');
+    if(!archived)await fs.link(source,target);
+    const verified=await this.read(from,{binary:true});requireThat(verified?.sha256===expected,'stale','The original changed while archiving; both copies are retained.');
     await fs.unlink(source);
-    requireThat((await this.read(to))?.sha256===expected,'mismatch','Archive verification failed.');
+    requireThat((await this.read(to,{binary:true}))?.sha256===expected,'mismatch','Archive verification failed.');
   }
   async substore(relative,options={}) {
     const root=await this.location(relative,{createParent:false});

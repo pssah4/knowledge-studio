@@ -450,3 +450,14 @@ body[data-workspace] { --ws-accent: var(--ws-chosen-accent, #565656); --ws-bg: #
 #ws-editor .ws-live-callout > .stueck { display:none; }
 #ws-editor .ws-live-callout { white-space:normal; }
 .ws-shadow-quote { white-space: pre-wrap; overflow-wrap: anywhere; padding: 14px; border-left: 3px solid var(--ws-accent); font: inherit; }
+
+/* Formula decorations never enter the Markdown buffer or change on focus. */
+.ws-formula { display:inline-block; vertical-align:middle; max-width:100%; overflow-x:auto; }
+.ws-formula-error { text-decoration:underline wavy; text-decoration-color:var(--ws-muted); }
+#ws-editor .zeile:not(.aktiv) > .ws-formula-source { font-size:0; }
+#ws-editor .zeile.aktiv > [data-writing-decoration="formula"] { display:none; }
+#ws-editor .zeile:not(.aktiv) .stueck.footref:not(.zeichen) { vertical-align:super; font-size:.8em; }
+.ws-footnotes { border-top:1px solid var(--ws-border); margin-top:1.5em; font-size:.9em; }
+
+#ws-editor .ws-live-formula:not(.ws-live-formula-editing) > .stueck { font-size:0; }
+#ws-editor .ws-live-formula-editing > [data-writing-decoration="formula-block"] { visibility:hidden; position:absolute; }

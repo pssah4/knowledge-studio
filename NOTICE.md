@@ -65,3 +65,7 @@ The browser preview includes @silurus/ooxml 0.72.2 (MIT) and @zrimo/viewer 0.1.2
 and license texts travel in `runtime/assets/office-NOTICES.txt` and inside
 the embedded Office document. Versions, input hashes and local adaptations are
 recorded in `vendor/office/manifest.json` and `vendor/office/README.md`.
+
+## Offline formula display
+
+The editor embeds KaTeX 0.18.7 (MIT), https://github.com/KaTeX/KaTeX, for MathML-only formula display. No KaTeX fonts or remote assets are requested. Its license is retained in the JavaScript bundle and in `assets/licenses/katex-LICENSE`.

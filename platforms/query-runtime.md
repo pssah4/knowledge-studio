@@ -1,5 +1,24 @@
 # Query runtime: read existing knowledge
 
+For Node calls in both skills, the runtime bounds filesystem reads and supervises
+its worker inside the existing sandbox. A filesystem timeout is an incomplete
+operation, never proof of missing knowledge. Read `error.code/message/details`;
+`runtime_read_timeout` identifies the affected path. Do not retry with `2>&1`,
+`; echo EXIT:$?`, `cat`, or a temporary-file redirect. Do not change the host or its
+grants. For a read-only query, retain the question and retry the exact request at
+most once; if it blocks again, report the affected file and the incomplete scope.
+A connection-scoped query may answer a narrower, explicitly disclosed question;
+never silently omit an inaccessible connection. For an interrupted mutation, inspect
+current state before retrying: `partial_changes_possible` is not a rollback.
+The same protection applies to the separate HTML answer helper. Never claim an
+answer file was generated or opened after a failed export.
+
+
+This is supplementary detail. The loaded SKILL.md contains the startup calls and
+host instructions; do not require this file to load before inspect/query. An optional
+documentation timeout does not cancel the original question. Continue with the loaded
+contract and executable --help; never bypass an access-denied result.
+
 The wiki entrypoint performs retrieval only. It must never conduct setup, collect setup
 answers, create knowledge folders, write settings, run ingestion, synchronize or update the
 editor. The complementary maintain-llm-wiki skill owns those operations. Do not

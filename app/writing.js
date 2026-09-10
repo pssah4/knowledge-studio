@@ -1149,7 +1149,7 @@ function writingSurface(root) {
    * back, because that is where the hand was when the text last looked like
    * this.
    */
-  function put(text) {
+  function put(text, historyAction) {
     var change = writingChange(state.text, text);
     var spot = change.at + change.put.length;
 
@@ -1160,7 +1160,7 @@ function writingSurface(root) {
     writingDraw(root, text, state.active);
     writingSeatSpan(root, writingSpotAt(root, spot), writingSpotAt(root, spot));
     state.hear.forEach(function (one) {
-      one(text);
+      one(text, historyAction);
     });
     return true;
   }
@@ -1170,7 +1170,7 @@ function writingSurface(root) {
       return false;
     }
     state.forward.push(state.text);
-    return put(state.back.pop());
+    return put(state.back.pop(), 'undo');
   }
 
   function redo() {
@@ -1178,7 +1178,7 @@ function writingSurface(root) {
       return false;
     }
     state.back.push(state.text);
-    return put(state.forward.pop());
+    return put(state.forward.pop(), 'redo');
   }
 
   function history() {

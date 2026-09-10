@@ -8,7 +8,9 @@ import {spawn,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createEditorHost} from './editor-host.mjs';
 import {requireThat} from './core/errors.mjs';
+import {editorDestination} from './citations.mjs';
 const localBindingAllowed=typeof __LLMWIKI_ALLOW_LOCAL_BINDING__==='undefined'||__LLMWIKI_ALLOW_LOCAL_BINDING__;
+const hostOpenTool=typeof __LLMWIKI_HOST_OPEN_TOOL__!=='undefined'?__LLMWIKI_HOST_OPEN_TOOL__:null;
 const profile=typeof __LLMWIKI_PROFILE__!=='undefined'?__LLMWIKI_PROFILE__:'local';
 const exec=promisify(execFile),STATE='.llmwiki/editor-server.json';
 const version=typeof __LLMWIKI_VERSION__!=='undefined'?__LLMWIKI_VERSION__:'development';
@@ -55,10 +57,12 @@ async function checkBinding(){
 const diagnostic=error=>({code:error.code??'editor_host',message:String(error.message).replace(/[a-f0-9]{64}/gi,'[redacted]').slice(0,1000)});
 export async function editorPreflight(root,{profile:hostProfile=profile,bindingsFile=null,checkBinding:check=checkBinding}={}){
  const bindings=await loadBindings(root,{file:bindingsFile,readOnly:true}),saved=await inspect(root,{bindings});
+ const destination=saved.project?await editorDestination(root,saved.project):{available:false,reason:'project_missing'};
+ const standaloneOpen=destination.available&&hostOpenTool&&saved.editor?.entry_path?{tool:hostOpenTool,arguments:{path:saved.editor.entry_path}}:null;
  const folders=saved.locations??[],byID=id=>folders.find(f=>f.id===id);
  const handoff={project_root:root.root,entry_path:saved.editor?.entry_path??null,entry_exists:saved.editor?.exists??false,
   obsidian:(saved.project?.connections??[]).flatMap(c=>c.works.map(id=>({connection:c.id,label:c.label,folder:id,path:byID(id)?.location??null,binding_available:byID(id)?.binding_available??false}))),
-  standalone:{browsers:['Chrome','Edge'],browser_verified:false,requires_folder_selection:true,
+  standalone:{status:standaloneOpen?'host_action_required':destination.available?'native_tool_required':'unavailable',open:standaloneOpen,reason:destination.reason??null,browsers:['Chrome','Edge'],browser_verified:false,requires_folder_selection:true,
    steps:[{role:'project',path:root.root},...folders.filter(f=>f.external).map(f=>({role:f.kind,folder:f.id,path:f.location}))],
    instruction:'Open the canonical HTML in Chrome or Edge. Select its project folder first, then grant only the external folders requested by the editor. Stored settings do not grant browser access; Firefox is not a writable File System Access fallback.'}};
  const issues=[...(saved.issues??[]),...folders.filter(f=>!f.binding_available).map(f=>({code:'binding_missing',folder:f.id}))];
@@ -66,7 +70,7 @@ export async function editorPreflight(root,{profile:hostProfile=profile,bindings
   running:false,browser_verified:false,setup_complete:false,process_persistence:'unverified',handoff};
  if(base.configuration!=='verified')return {...base,status:'setup_required',reason:{code:'setup',message:'Resume the existing setup and repair its reported missing fields before opening the editor.'}};
  if(base.editor_mode==='obsidian')return {...base,status:'native_editor',next:'Open the configured working-copy path in Obsidian using the host opening tool; verify with the user.'};
- if(!localBindingAllowed)return {...base,status:'unavailable',reason:{code:'local_binding_forbidden',message:'This host profile uses a sandbox with allowLocalBinding:false. It forbids listening on 127.0.0.1; folder sharing does not change that policy.'},next:'Use the guided standalone editor or the configured Obsidian working copy. Do not retry the server or widen sandbox permissions.'};
+ if(!localBindingAllowed)return {...base,status:'unavailable',reason:{code:'local_binding_forbidden',message:'This host profile uses a sandbox with allowLocalBinding:false. It forbids listening on 127.0.0.1; folder sharing does not change that policy.'},next:standaloneOpen?'The server is unavailable; the standalone editor has a separate valid handoff. Invoke handoff.standalone.open.tool with its exact arguments using the host tool, then check its response. A chat link does not perform this action; do not claim the browser opened without verification.':'Use the guided standalone editor or the configured Obsidian working copy. Do not retry the server or widen sandbox permissions.'};
  try{await check();}catch(error){return {...base,status:'unavailable',reason:diagnostic(error),next:'Local binding failed in this execution environment. Continue with the guided standalone editor or configured Obsidian working copy; do not claim setup is complete.'};}
  return {...base,status:'available',next:'Only start if the browser is on this execution host or an actual host preview is available. A successful socket check proves neither browser access nor process persistence.'};
 }
