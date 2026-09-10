@@ -1,0 +1,62 @@
+{
+  "builder": {
+    "esbuild": "0.28.2"
+  },
+  "packages": {
+    "@silurus/ooxml": "0.72.2",
+    "@zrimo/viewer": "0.1.2"
+  },
+  "inputs": {
+    "scripts/office/runtime.js": "039f8da62c2725389395306e289db7591815cc72cff6258e15c3765eb374277d",
+    "vendor/office/ooxml/dist/docx-wLLJuetI.js": "e8b703d7787c9eddd234981f699220ddf6797e2402e230a1d4b3289c24ba3002",
+    "vendor/office/ooxml/dist/docx.mjs": "488e6d530c072ad64ad4375b0b0dc12d7d00fccf8aa5fa1e373fe3a5271023c2",
+    "vendor/office/ooxml/dist/docx_parser_bg.wasm": "a7e38311587511ae1cd5e7c9812a4d0db4e24b31cc1bb765236dbb2dcbfeaf88",
+    "vendor/office/ooxml/dist/find-cursor-DBifiZop.js": "851e382e788d3065c4fd5be59c2e35feafec49cff31edea4991fb587bbf045e2",
+    "vendor/office/ooxml/dist/highlight-rect-DTgfiJgA.js": "1cb90895da3d5a150aeee50aabd820ca0f1c4ae32919bba1fe1fff6ef52fb23e",
+    "vendor/office/ooxml/dist/mathjax-Dk_JzbFj.js": "e9f1ad38966dee50b40630314fba60913e378572e3dab4d151a9b8e470159414",
+    "vendor/office/ooxml/dist/pptx-D3L4FQfI.js": "adbebee265beb61b75cb8c3b74443d45124bc5650580d5cd5262f64ebc6065dc",
+    "vendor/office/ooxml/dist/pptx.mjs": "07aef03fbc442b0656d3cb9c4e4449f30306c4f74a4e1560986e851351610783",
+    "vendor/office/ooxml/dist/pptx_parser_bg.wasm": "4ff969b9e3d37740b9c06a524fa5a262443ab72fb097594ad6324c54f4da7382",
+    "vendor/office/ooxml/dist/render-worker-host-B5esxBj-.js": "3ee7a69a402faa7030374a58e31b85e448b8e27ddef8c6732b0e9d37e70c65ef",
+    "vendor/office/ooxml/dist/render-worker-host-BzhGwe0I.js": "6b8d9f9427dbecc065113382d136e5340637d7f2d6f1ce9c4429d3d2bb22ca92",
+    "vendor/office/ooxml/dist/render-worker-host-Cg60RAG_.js": "a370c69aa379ebb6f0f1ac27215334292cf774e7af42478b04a2da79792b68a8",
+    "vendor/office/ooxml/dist/segments--0hIQLXB.js": "4c8ffcf1ebbd8dacbd653ee03c024726a9f9984c03b052bc347e763c9cec5177",
+    "vendor/office/ooxml/dist/visible-index-DSN5XPnm.js": "b74a83c014a2b27f2f676c8b35334f691dee939d25304cf0fb0646967f4dc5c0",
+    "vendor/office/ooxml/dist/xlsx-BWEqRZ25.js": "3845020df8b1b0282641737410fdd2e41285946e9d72be7dc3be7539e03409a7",
+    "vendor/office/ooxml/dist/xlsx.mjs": "7accb3c651f91881011d46a933e086134cbe46110c5f0f1becad7d5057f6ca6f",
+    "vendor/office/ooxml/dist/xlsx_parser_bg.wasm": "4e2340b8f6a0aba67bc5fa6d62fb3e505d4b0059901f384d963c5e7a5f1e8443",
+    "vendor/office/zrimo/dist/abort.js": "5993b57048ac6f3cb65b8f563ab92c21d20dafb4304274225e8ad89c8c9e3785",
+    "vendor/office/zrimo/dist/adapters/office.js": "b54199e712738447a03253a4ee9cc9cfa35f2fa4e7b0a4a0476fcc4e8d503f58",
+    "vendor/office/zrimo/dist/assets/legacy/index.js": "60da5b73ff66c0f70ee3275a8f42f7b50412ee173447409024f46f41d7cbdd6d",
+    "vendor/office/zrimo/dist/assets/legacy/index_bg.wasm": "b58c3cbdb540477fa032dc4c4432569bc8ec6650f4ac52d2b3704d6f4a9d3451",
+    "vendor/office/zrimo/dist/detect.js": "10ef76ce3d5e45ffe54770fa349bf52236204df7dadd237f2b9c5276ff50ea07",
+    "vendor/office/zrimo/dist/errors.js": "8ef88a44fd8b8fe5b8d6f86b4ecaaf7d9ffcb3339919d70d1efe3d3cf617bb72",
+    "vendor/office/zrimo/dist/font-manifest.js": "9c54dfd4d6f3e8afa79f3f749a595aa75d1cdf46f6ef3c56afde18e3ed423702",
+    "vendor/office/zrimo/dist/fonts.js": "942f6262d62f52b06b7b60e86fbef00de5005713cfd30b9e37de65f5f5f3479a",
+    "vendor/office/zrimo/dist/i18n.js": "f305a67b12e4cb6cf42b83382040b99e2644d2a19bc0d738835549f6e5212256",
+    "vendor/office/zrimo/dist/interaction.js": "3b0fa5d2375c115a7673b70a39aa7485fd1099d74aebea0601570f9c08864721",
+    "vendor/office/zrimo/dist/limits.js": "f926ed7b53ae3fb2dee3b4a44bedcd871b4564ca0ada2bfb09dd98b1cd09ff78",
+    "vendor/office/zrimo/dist/registry.js": "843222d37a5d5f08ff593ed590e5ca76b25728bded816f39043f7706a52ff603",
+    "vendor/office/zrimo/dist/render-scheduler.js": "26e2973572ec70d1f5878ab8021384a9ad6e9df8696bf7308ef14a746b87a7ea",
+    "vendor/office/zrimo/dist/source.js": "3f455292b4e24e7ed96031b5e6e19b4e5d9aa1d4830d4659f3bc0d6e06897c4c",
+    "vendor/office/zrimo/dist/spreadsheet-viewport.js": "e4d989914c9e8fed95a4523a5b45056c990d0bc23f2d59472a0516823a3f2572",
+    "vendor/office/zrimo/dist/ui-styles.js": "e1d6f19ff91425de25412c9075d5f035646af46d639d6ba0d5605153ef54036d",
+    "vendor/office/zrimo/dist/ui.js": "f60da44736ffb8f9754c40425ff5516553ab34f7092b6c81947679ec538de048",
+    "vendor/office/zrimo/dist/viewer.js": "bd20934b3816583ff02eab968eb517139b5dfa71089299e479f94deab4c562cb",
+    "vendor/office/zrimo/dist/viewport.js": "ae8fc25f3594d774e6395b9bbbbdc95361de82c7117980570f099ca5bf473afe",
+    "scripts/build_office.mjs": "7c4abbb75967a320dcc436e8f61526749756330d80790125cefa1d4d4eee048b",
+    "vendor/office/ooxml/package.json": "e5f125b63fd653912b576c3ea1c78ec9bd0836a90d61c4a8ea33d2095c6a236f",
+    "vendor/office/zrimo/package.json": "002422134eb7570a30dfd0d473b437bc564226689e410323f1427532e1dcbdda",
+    "vendor/office/ooxml/LICENSE": "c5ef721b35150df22732e27fd72224e61a87e0887fcd2505abe90c056ae053bb",
+    "vendor/office/ooxml/THIRD_PARTY_NOTICES.md": "8074872c01bd6464c7fa49106530b7c21de2e5735dcd641ccc51dc36a38479d9",
+    "vendor/office/zrimo/LICENSE-MIT": "6c9e318fefc069405a6dcb76030cc1598906c671252f0862e1f4c72df05d1c2e",
+    "vendor/office/zrimo/LICENSE-APACHE": "1641e64e669719a8ee3e0b44d9e86e135424e2126e4c7048bd4685fb58733bdf",
+    "vendor/office/zrimo/THIRD_PARTY_NOTICES.md": "eba0466b7a1c61d43a2ac30eab83cc218d6203dd53d93169a7ad2d421f5a6ae2",
+    "vendor/office/zrimo/dist/styles.css": "fe8dd83b93f85b3b6204b55706bf3e97b22896d255685767861863127005b223"
+  },
+  "output": {
+    "file": "app/officebundle.js",
+    "sha256": "2455bfa056204bf91acdbccc5209e97458027c0abfc6340522c61c5424f2fdfa",
+    "bytes": 4128126
+  }
+}

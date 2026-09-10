@@ -1,0 +1,53 @@
+name: Release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: public-release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.repository == 'pssah4/knowledge-studio' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run verify:version
+      - run: npm run build
+      - run: npm run release:assets
+      - name: Publish versioned assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')"
+          TAG="v$VERSION"
+          NOTES="docs/releases/$TAG.md"
+          test -f "$NOTES"
+          if TAG_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null)"; then
+            test "$TAG_SHA" = "$GITHUB_SHA" || { echo 'Tag belongs to another commit; bump the version.' >&2; exit 1; }
+          fi
+          if gh release view "$TAG" --json isDraft > "$RUNNER_TEMP/release.json" 2>/dev/null; then
+            TAG_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')"
+            test "$TAG_SHA" = "$GITHUB_SHA" || { echo 'Version already belongs to another commit; bump the version.' >&2; exit 1; }
+            if [[ "$(jq -r .isDraft "$RUNNER_TEMP/release.json")" == false ]]; then
+              echo "Release $TAG already published for this commit."
+              exit 0
+            fi
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "Knowledge Studio $TAG" --notes-file "$NOTES" --draft
+          fi
+          gh release upload "$TAG" dist/release-assets/* --clobber
+          if [[ "$VERSION" == *-* ]]; then
+            gh release edit "$TAG" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$TAG" --draft=false --latest
+          fi

@@ -1,0 +1,800 @@
+/* How the surface looks. One file, no build step, no library, no font from
+ * anywhere but this machine (ADR-08). Colours are named once at the top so a
+ * bundle that wants another set changes them in one place.
+ *
+ * Two rules of the layout carry meaning rather than taste. The compulsory part
+ * and the optional one are told apart by a mark on the section, because a
+ * person has to see which of the two they are standing in. And the editing
+ * view puts the page and the open notices side by side, because a notice that
+ * has to be looked up is a notice nobody reads.
+ */
+
+:root {
+  --ink: #1b1d21;
+  --ink-quiet: #5c6068;
+  --ground: #fbfaf7;
+  --sheet: #ffffff;
+  --line: #d8d5cd;
+  --duty: #2f5d50;
+  --duty-ground: #eef4f1;
+  --optional: #4a4f57;
+  --open: #8a5a1f;
+  --open-ground: #fcf3e6;
+  --gap: 1rem;
+  --radius: 4px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 16rem 1fr;
+  min-height: 100vh;
+  background: var(--ground);
+  color: var(--ink);
+  font: 16px/1.55 "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+}
+
+/* the way in */
+
+.kopf {
+  padding: 1.5rem 1.25rem;
+  border-right: 1px solid var(--line);
+  background: var(--sheet);
+}
+
+.marke {
+  margin: 0 0 1.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.wege {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.wege-titel {
+  margin: 1rem 0 0.35rem;
+  font-family: system-ui, sans-serif;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-quiet);
+}
+
+.wege button {
+  padding: 0.4rem 0.55rem;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wege button:hover {
+  background: var(--duty-ground);
+}
+
+.wege button[aria-current="page"] {
+  background: var(--duty);
+  color: var(--sheet);
+}
+
+/* the sections */
+
+main {
+  padding: 2rem 2.25rem 4rem;
+  max-width: 62rem;
+}
+
+section {
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.5rem 1.75rem 1.75rem;
+}
+
+section[data-part="pflicht"] {
+  border-left: 4px solid var(--duty);
+}
+
+section[data-part="wahl"] {
+  border-left: 4px solid var(--optional);
+}
+
+h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+}
+
+h3 {
+  margin: 1.5rem 0 0.4rem;
+  font-size: 1rem;
+}
+
+h4 {
+  margin: 0 0 0.35rem;
+  font-family: system-ui, sans-serif;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-quiet);
+}
+
+.einleitung {
+  margin: 0 0 1.25rem;
+  max-width: 46rem;
+}
+
+.leise {
+  color: var(--ink-quiet);
+  font-size: 0.92rem;
+  max-width: 44rem;
+}
+
+/* the folders */
+
+.bindungen {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.binding {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.binding-name {
+  flex: 0 0 11rem;
+  font-weight: 600;
+}
+
+.binding-place {
+  flex: 1 1 auto;
+  color: var(--ink-quiet);
+}
+
+/* the one question */
+
+.frage {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.messung {
+  margin: 1rem 0;
+  padding: 0.75rem 0.9rem;
+  border-left: 3px solid var(--duty);
+  background: var(--duty-ground);
+  max-width: 46rem;
+}
+
+.antwort {
+  margin: 1rem 0 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  max-width: 30rem;
+}
+
+.antwort label {
+  display: block;
+  padding: 0.2rem 0;
+}
+
+.bestaetigung {
+  margin: 0.25rem 0 0.75rem;
+}
+
+.lage {
+  font-weight: 600;
+}
+
+/* the settings */
+
+.einstellungen {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.setting {
+  display: grid;
+  grid-template-columns: 14rem 1fr;
+  gap: 0.35rem 1rem;
+  align-items: baseline;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.setting-label {
+  font-weight: 600;
+}
+
+.setting-where {
+  grid-column: 1;
+  font-family: system-ui, sans-serif;
+  font-size: 0.72rem;
+  color: var(--ink-quiet);
+}
+
+.setting-hint {
+  grid-column: 2;
+  margin: 0;
+  color: var(--ink-quiet);
+  font-size: 0.9rem;
+}
+
+.fehlend {
+  margin-top: 1.25rem;
+  padding: 0.85rem 1rem;
+  border-left: 3px solid var(--open);
+  background: var(--open-ground);
+}
+
+.fehlend p {
+  margin: 0 0 0.4rem;
+  font-weight: 600;
+}
+
+/* the listing */
+
+.suche {
+  display: block;
+  font-family: system-ui, sans-serif;
+  font-size: 0.78rem;
+  color: var(--ink-quiet);
+}
+
+.ablage {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.entry {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.entry-open {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--duty);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.entry-where {
+  color: var(--ink-quiet);
+  font-size: 0.88rem;
+}
+
+.empty {
+  color: var(--ink-quiet);
+}
+
+/* the editing view: page plus the open notices beside it */
+
+.bearbeiten {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.seitenname {
+  margin: 0 0 0.75rem;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  color: var(--ink-quiet);
+}
+
+/* Der Entwurf, der das Schließen überdauert.
+ *
+ * Der Streifen steht über der Schreibfläche, weil er sagt, welchen der beiden
+ * Texte jemand gerade vor sich hat. Er trägt die Farbe der offenen Stellen,
+ * denn er ist eine: jemand hat hier etwas liegen lassen, und irgendwann
+ * entscheidet er, ob es bleibt. Der Weg heraus steht daneben und nicht in
+ * einem Menü, weil ein Entwurf, den man nicht loswird, schlimmer ist als
+ * keiner.
+ */
+.entwurf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+  align-items: baseline;
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-left: 3px solid var(--open);
+  background: var(--open-ground);
+  font-size: 0.9rem;
+}
+
+.entwurf p {
+  margin: 0;
+  flex: 1 1 16rem;
+}
+
+/* Die Schreibfläche.
+ *
+ * Ein Puffer, kein zweiter Blick: der rohe Text steht in der Fläche, und die
+ * Auszeichnungszeichen werden nur angezeigt oder zurückgenommen, nie entfernt
+ * (FEAT-08-07, SC-10). Deshalb hängt die Wirkung einer Form nicht daran, ob
+ * die Zeile gerade geschrieben wird. Was am Zustand hängt, sind allein die
+ * Zeichen: in der aktiven Zeile stehen sie da, in jeder anderen treten sie
+ * zurück. Die Höhe der Zeile bleibt dabei gleich, weil die Form der Zeile
+ * schon vorher gilt.
+ */
+/* Die Knöpfe, mit denen eine Form gesetzt wird. Sie stehen über dem Blatt und
+ * bleiben klein: was zählt, ist der Text darunter, nicht die Leiste darüber.
+ */
+.formen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.formengruppe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding-right: 0.75rem;
+  border-right: 1px solid var(--line);
+}
+
+.formengruppe:last-child {
+  padding-right: 0;
+  border-right: 0;
+}
+
+.formen button {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ground);
+  color: var(--ink-quiet);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.formen button:hover {
+  background: var(--duty-ground);
+  border-color: var(--duty);
+  color: var(--ink);
+}
+
+/* Die Zeile zum Suchen und Ersetzen.
+ *
+ * Sie steht über der Schreibfläche und unter der Formenleiste, weil sie zur
+ * selben Sorte gehört: etwas, das man auf den Text darunter anwendet. Sie
+ * bleibt eine Zeile und wird kein Fenster, das sich über den Text legt, denn
+ * wer ersetzt, will sehen, was er ersetzt.
+ *
+ * Die Felder tragen eine eigene Breite und wachsen mit, die Knöpfe bleiben so
+ * klein wie die der Formenleiste. Die Lage steht am Ende und bricht in eine
+ * eigene Zeile um, damit "Fundstelle 3 von 7" nicht bei jeder Zahl die Knöpfe
+ * verschiebt.
+ */
+.suchen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  align-items: center;
+  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ground);
+  font-size: 0.82rem;
+}
+
+.suchen label {
+  color: var(--ink-quiet);
+}
+
+.suchen input[type="text"] {
+  flex: 1 1 9rem;
+  min-width: 6rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  color: inherit;
+  font: inherit;
+}
+
+.suchen button {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  color: var(--ink-quiet);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.suchen button:hover {
+  background: var(--duty-ground);
+  border-color: var(--duty);
+  color: var(--ink);
+}
+
+/* Die Frage nach der Schreibweise. Kästchen und Text gehören zusammen und
+ * dürfen zwischen sich nicht umbrechen, sonst steht ein Kästchen allein am
+ * Zeilenende und niemand weiß mehr, wozu es gehört.
+ */
+.suchen .egal {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.suchen .lage {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ink-quiet);
+  font-weight: 400;
+}
+
+.schreibflaeche {
+  width: 100%;
+  min-height: 26rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  color: inherit;
+  font: 0.92rem/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  tab-size: 4;
+}
+
+/* Das Angebot passender Ziele.
+ *
+ * Es steht unter der Schreibfläche und nicht darüber, weil es zu dem gehört,
+ * was gerade getippt wird, und weil es kommt und geht: eine Leiste, die oben
+ * auftaucht, schiebt den ganzen Text nach unten und die Zeile unter der
+ * Schreibmarke weg. Unten wächst die Seite nach unten und lässt alles stehen.
+ *
+ * Leer trägt die Liste keinen Rand und keine Höhe, damit sie im Ruhezustand
+ * gar nicht da ist.
+ */
+.ziele {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ziele:empty {
+  margin: 0;
+}
+
+.ziele button {
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  color: var(--ink-quiet);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.ziele button:hover {
+  background: var(--duty-ground);
+  border-color: var(--duty);
+  color: var(--ink);
+}
+
+.schreibflaeche:focus {
+  outline: 2px solid var(--duty);
+  outline-offset: 1px;
+}
+
+.zeile {
+  min-height: 1.6em;
+}
+
+/* Die Zeichen. Sie bleiben im Text stehen und werden nur schmal: ein Wert von
+ * null nimmt ihnen die Breite, nicht ihren Platz in der Zeile.
+ */
+.zeichen {
+  color: var(--ink-quiet);
+}
+
+.zeile:not(.aktiv) .zeichen {
+  font-size: 0;
+  letter-spacing: 0;
+}
+
+/* Die Formen. Jede gilt unabhängig davon, ob die Zeile aktiv ist. */
+.heading {
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.heading-1 { font-size: 1.5rem; }
+.heading-2 { font-size: 1.3rem; }
+.heading-3 { font-size: 1.15rem; }
+.heading-4 { font-size: 1.05rem; }
+.heading-5 { font-size: 1rem; }
+.heading-6 { font-size: 0.95rem; color: var(--ink-quiet); }
+
+.bold { font-weight: 700; }
+.italic { font-style: italic; }
+.underline { text-decoration: underline; }
+.strike { text-decoration: line-through; color: var(--ink-quiet); }
+
+.highlight {
+  background: var(--open-ground);
+  box-shadow: 0 0 0 2px var(--open-ground);
+}
+
+.code,
+.code-block,
+.math {
+  background: var(--ground);
+  border-radius: 2px;
+}
+
+.zeile.code-block,
+.zeile.fence {
+  background: var(--ground);
+}
+
+.zeile.quote {
+  border-left: 3px solid var(--line);
+  padding-left: 0.6rem;
+  color: var(--ink-quiet);
+}
+
+.zeile.callout {
+  border-left: 3px solid var(--open);
+  background: var(--open-ground);
+  padding-left: 0.6rem;
+  color: inherit;
+}
+
+.callout-name {
+  font-weight: 600;
+  color: var(--open);
+}
+
+/* Die Regel. Ihre Zeichen treten zurück, und dann trägt die Zeile den Strich,
+ * damit die Zeile nicht leer wird und in der Höhe springt.
+ */
+.zeile.rule:not(.aktiv) {
+  border-bottom: 1px solid var(--line);
+}
+
+.zeile.table {
+  font-variant-numeric: tabular-nums;
+}
+
+.table-delimiter {
+  color: var(--line);
+}
+
+.wikilink,
+.link,
+.embed,
+.footref {
+  color: var(--duty);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.footnote {
+  color: var(--ink-quiet);
+}
+
+.head {
+  color: var(--ink-quiet);
+}
+
+.head-key {
+  color: var(--duty);
+}
+
+.zeile.head {
+  background: var(--duty-ground);
+}
+
+.zeile.aktiv {
+  background: var(--ground);
+}
+
+.task-done {
+  color: var(--ink-quiet);
+}
+
+.kopffelder {
+  margin-bottom: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid var(--open);
+  background: var(--open-ground);
+}
+
+.kopffelder p {
+  margin: 0;
+}
+
+.owed {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+.vermerke {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ground);
+}
+
+.vermerke h3 {
+  margin-top: 0;
+}
+
+.notice {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+
+.kopfform {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.35rem 1rem;
+  align-items: baseline;
+  margin-bottom: 0.9rem;
+  max-width: 34rem;
+}
+
+.kopf-label {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--ink-quiet);
+}
+
+/* the relations form */
+
+.beziehung-form {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.4rem 1rem;
+  align-items: baseline;
+  max-width: 34rem;
+}
+
+.beziehung-form button {
+  grid-column: 2;
+  justify-self: start;
+}
+
+/* the open spots */
+
+.stellen {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.spot {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--open);
+  border-radius: var(--radius);
+  background: var(--open-ground);
+}
+
+.side pre {
+  margin: 0 0 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius);
+  background: var(--sheet);
+  font: 0.85rem/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* the standing */
+
+.stand {
+  font-size: 1.1rem;
+  font-weight: 600;
+  max-width: 44rem;
+}
+
+/* the controls */
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+input[type="text"],
+input[type="search"],
+select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  color: inherit;
+  min-width: 14rem;
+}
+
+button[data-action],
+.wege button,
+.release,
+.drop {
+  cursor: pointer;
+}
+
+button[data-action],
+.release,
+.drop {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ground);
+  color: inherit;
+}
+
+button[data-action]:hover,
+.release:hover,
+.drop:hover {
+  background: var(--duty-ground);
+  border-color: var(--duty);
+}
+
+[hidden] {
+  display: none;
+}
+
+@media (max-width: 60rem) {
+  body {
+    grid-template-columns: 1fr;
+  }
+
+  .kopf {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .bearbeiten,
+  .spot,
+  .setting,
+  .kopfform,
+  .beziehung-form {
+    grid-template-columns: 1fr;
+  }
+}

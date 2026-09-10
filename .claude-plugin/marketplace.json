@@ -1,0 +1,16 @@
+{
+  "name": "llm-wiki-local",
+  "owner": {
+    "name": "Sebastian Hanke"
+  },
+  "plugins": [
+    {
+      "name": "llm-wiki",
+      "source": "./",
+      "description": "Lokales LLM-Wiki mit zwei Skills und Markdown-Arbeitsplatz"
+    }
+  ],
+  "metadata": {
+    "description": "Zwei lokale LLM-Wiki-Skills mit gemeinsamem Markdown-Arbeitsplatz."
+  }
+}

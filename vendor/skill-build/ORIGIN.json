@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/pssah4/vault-operator-skills",
+  "commit": "56170eb6f40c9212b4a42590210af6d23b1e3622",
+  "license": "Apache-2.0",
+  "files": [
+    "tools/lib/zip.mjs",
+    "tools/lib/build.mjs (runtime section extraction only)"
+  ],
+  "changes": "Runtime section extraction isolated from repository-specific deployment paths. ZIP writer unchanged.",
+  "sha256": {
+    "zip.mjs": "fad995b250ee1e06f8d884708339f8dd0a38f2378973c0ed6d4de7b9188e9733",
+    "runtime.mjs": "fe2232bb6cf172c4d8df70a840a3fd680e0a2e2540300e272c5938b3e1bb4a6c"
+  }
+}

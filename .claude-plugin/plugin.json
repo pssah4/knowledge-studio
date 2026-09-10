@@ -1,0 +1,19 @@
+{
+  "name": "llm-wiki",
+  "description": "Quellenbestände vollständig erschließen, einzelne Quellen im Dialog aneignen und Wissen über belegte Multi-Wiki-Graphabfragen nutzen.",
+  "version": "0.4.23",
+  "author": {
+    "name": "Sebastian Hanke"
+  },
+  "homepage": "https://github.com/pssah4/knowledge-studio",
+  "repository": "https://github.com/pssah4/knowledge-studio",
+  "license": "Apache-2.0",
+  "keywords": [
+    "markdown",
+    "wiki",
+    "knowledge-base",
+    "obsidian",
+    "graphrag",
+    "sync"
+  ]
+}

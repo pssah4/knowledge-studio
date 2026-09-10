@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "profiles": [
+    {
+      "id": "claude-code",
+      "section": "Claude Code",
+      "engine": "node",
+      "layout": "claude",
+      "requirements": "Node ab 22.13; zugänglicher Projektordner"
+    },
+    {
+      "id": "claude-cowork",
+      "section": "Claude Cowork",
+      "engine": "node",
+      "layout": "claude",
+      "requirements": "Node ab 22.13 im Host; persistente freigegebene Projektordner"
+    },
+    {
+      "id": "codex",
+      "section": "Codex",
+      "engine": "node",
+      "layout": "openai",
+      "requirements": "Node ab 22.13; Skill-Ordner unter .agents/skills/; zugängliches Projekt"
+    },
+    {
+      "id": "chatgpt",
+      "section": "ChatGPT",
+      "engine": "node",
+      "layout": "openai",
+      "requirements": "Workspace mit Skills und Node-Dateiausführung; ohne persistenten Speicher als Projektkopie"
+    },
+    {
+      "id": "vault-operator",
+      "section": "Vault Operator",
+      "engine": "vault",
+      "layout": "vault",
+      "requirements": "Native execute/ctx-Bridge; zugänglicher Vault; fortsetzbare Schreibpakete innerhalb der Hostlimits"
+    }
+  ]
+}

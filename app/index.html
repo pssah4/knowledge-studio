@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src blob:; img-src blob: data:">
+<title>Knowledge Studio</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="workspace.css">
+</head>
+<body data-workspace="true">
+<div id="workspace-app"></div>
+<div id="legacy-app" hidden>
+
+<header class="kopf">
+  <p class="marke">Knowledge Studio</p>
+  <nav class="wege" aria-label="Bereiche">
+    <p class="wege-titel">Ohne diesen Teil geht es nicht</p>
+    <button type="button" data-view="ordner">Ordner</button>
+    <button type="button" data-view="schreibachse">Wer schreiben darf</button>
+    <button type="button" data-view="einstellungen">Einstellungen</button>
+    <p class="wege-titel">Kannst du auch in deinem eigenen Werkzeug tun</p>
+    <button type="button" data-view="ablage">Ablage</button>
+    <button type="button" data-view="seite">Seite</button>
+    <button type="button" data-view="vergleich">Offene Stellen</button>
+    <button type="button" data-view="stand">Stand</button>
+  </nav>
+</header>
+
+<main>
+
+<section id="ordner" data-part="pflicht">
+  <h2>Ordner wählen</h2>
+  <p class="einleitung">
+    Drei Ordner braucht dieses System, und die Freigabe dafür kann dir niemand
+    abnehmen: sie wird an dieser Stelle erteilt und sonst nirgends. Danach
+    schreibst du, wo du willst.
+  </p>
+  <ul id="ordner-liste" class="bindungen"></ul>
+  <p id="ordner-hinweis" class="leise"></p>
+  <p class="leise">
+    Der Arbeitsordner darf in einem abgeglichenen Ordner liegen, solange dort
+    außer dir niemand schreibt. In der Ablage einer anderen Person darf er
+    nicht liegen: verlierst du dort das Recht, nimmt die Plattform den ganzen
+    Inhalt mit.
+  </p>
+</section>
+
+<section id="schreibachse" data-part="pflicht">
+  <h2>Wer schreiben darf</h2>
+  <p id="schreibachse-frage" class="frage"></p>
+  <p id="schreibachse-warum" class="leise"></p>
+  <p id="schreibachse-messung" class="messung"></p>
+  <fieldset class="antwort">
+    <legend>Deine Antwort</legend>
+    <label><input type="radio" name="antwort" data-antwort="ja"> Ja, andere haben Schreibrecht</label>
+    <label><input type="radio" name="antwort" data-antwort="nein"> Nein, nur ich</label>
+  </fieldset>
+  <p id="schreibachse-bestaetigung" class="bestaetigung" hidden>
+    <label><input type="checkbox" data-antwort="sicher"> Ich weiß es besser als die Messung und bleibe dabei</label>
+  </p>
+  <p id="schreibachse-lage" class="lage"></p>
+  <p class="leise">
+    Gefragt ist nach den Rechten an diesem Ordner. Wer zuletzt etwas getan hat,
+    ändert sich täglich; ein Recht tut das nicht.
+  </p>
+</section>
+
+<section id="einstellungen" data-part="pflicht">
+  <h2>Einstellungen</h2>
+  <p class="einleitung">
+    Alles an einer Stelle, aus Auswahllisten. Was das Bündel angeht, reist mit
+    ihm; was dieses Gerät angeht, bleibt hier. Dieselben Dateien kannst du auch
+    von Hand ändern, das Ergebnis ist dasselbe.
+  </p>
+  <div id="einstellungen-liste" class="einstellungen"></div>
+  <div id="einstellungen-fehlend" class="fehlend" hidden></div>
+  <button type="button" data-action="uebernehmen-einstellungen">Einstellungen übernehmen</button>
+  <p id="einstellungen-lage" class="lage"></p>
+  <p class="leise">
+    Ein Geheimnis wird auf dieser Seite nur benannt. Den Wert dazu holt die
+    Laufzeit aus ihrer eigenen Ablage, und ein Feld dafür gibt es hier
+    absichtlich nicht.
+  </p>
+</section>
+
+<section id="ablage" data-part="wahl" hidden>
+  <h2>Ablage</h2>
+  <label class="suche" for="ablage-suche">Suchen nach Name, Titel oder Ort</label>
+  <input id="ablage-suche" type="search" autocomplete="off">
+  <p id="ablage-hinweis" class="leise"></p>
+  <ul id="ablage-liste" class="ablage"></ul>
+</section>
+
+<section id="seite" data-part="wahl" hidden>
+  <h2>Seite</h2>
+  <p id="seite-name" class="seitenname"></p>
+  <div id="seite-entwurf" class="entwurf" hidden>
+    <p id="seite-entwurf-satz"></p>
+    <button type="button" data-action="entwurf-verwerfen"
+            aria-label="Den Entwurf verwerfen und die gespeicherte Fassung holen">Entwurf verwerfen</button>
+  </div>
+  <div class="bearbeiten">
+    <div class="blatt">
+      <div id="seite-kopf" class="kopffelder" hidden></div>
+      <div id="seite-kopfform" class="kopfform"></div>
+      <div class="formen" role="toolbar" aria-label="Formen setzen">
+        <div class="formengruppe">
+          <button type="button" data-action="zurueck" aria-label="Einen Schritt zurück">Zurück</button>
+          <button type="button" data-action="vor" aria-label="Einen Schritt vor">Vor</button>
+        </div>
+        <div class="formengruppe">
+          <button type="button" data-form="bold" aria-label="Fett">Fett</button>
+          <button type="button" data-form="italic" aria-label="Kursiv">Kursiv</button>
+          <button type="button" data-form="underline" aria-label="Unterstrichen">Unterstrichen</button>
+          <button type="button" data-form="strike" aria-label="Durchgestrichen">Durchgestrichen</button>
+          <button type="button" data-form="highlight" aria-label="Hervorgehoben">Hervorgehoben</button>
+          <button type="button" data-form="code" aria-label="Code am Stück">Code</button>
+          <button type="button" data-form="math" aria-label="Formel">Formel</button>
+        </div>
+        <div class="formengruppe">
+          <button type="button" data-form="heading-1" aria-label="Überschrift 1">H1</button>
+          <button type="button" data-form="heading-2" aria-label="Überschrift 2">H2</button>
+          <button type="button" data-form="heading-3" aria-label="Überschrift 3">H3</button>
+          <button type="button" data-form="heading-4" aria-label="Überschrift 4">H4</button>
+          <button type="button" data-form="heading-5" aria-label="Überschrift 5">H5</button>
+          <button type="button" data-form="heading-6" aria-label="Überschrift 6">H6</button>
+        </div>
+        <div class="formengruppe">
+          <button type="button" data-form="list" aria-label="Liste">Liste</button>
+          <button type="button" data-form="list-ordered" aria-label="Gezählte Liste">Gezählt</button>
+          <button type="button" data-form="task" aria-label="Aufgabe">Aufgabe</button>
+          <button type="button" data-form="quote" aria-label="Zitat">Zitat</button>
+          <button type="button" data-form="callout" aria-label="Kasten mit Namen">Kasten</button>
+        </div>
+        <div class="formengruppe">
+          <button type="button" data-form="wikilink" aria-label="Verweis auf eine Seite">Verweis</button>
+          <button type="button" data-form="embed" aria-label="Eine Seite einbetten">Einbettung</button>
+          <button type="button" data-form="link" aria-label="Verweis auf eine Adresse">Adresse</button>
+          <button type="button" data-form="image" aria-label="Ein Bild einfügen">Bild</button>
+          <button type="button" data-form="footref" aria-label="Verweis auf eine Fußnote">Fußnote</button>
+          <button type="button" data-form="footnote" aria-label="Text einer Fußnote">Fußnotentext</button>
+        </div>
+        <div class="formengruppe">
+          <button type="button" data-form="code-block" aria-label="Code als Block">Codeblock</button>
+          <button type="button" data-form="table" aria-label="Tabelle">Tabelle</button>
+          <button type="button" data-form="rule" aria-label="Trennlinie">Trennlinie</button>
+        </div>
+      </div>
+      <div class="suchen">
+        <label for="seite-suche">Im Text suchen</label>
+        <input id="seite-suche" type="text" autocomplete="off">
+        <label for="seite-ersatz">Ersetzen durch</label>
+        <input id="seite-ersatz" type="text" autocomplete="off">
+        <label class="egal" for="seite-suche-egal">
+          <input id="seite-suche-egal" type="checkbox">
+          Groß- und Kleinschreibung egal
+        </label>
+        <button type="button" data-action="suche-zurueck"
+                aria-label="Zur vorigen Fundstelle">Vorige</button>
+        <button type="button" data-action="suche-vor"
+                aria-label="Zur nächsten Fundstelle">Nächste</button>
+        <button type="button" data-action="ersetzen"
+                aria-label="Diese eine Fundstelle ersetzen">Ersetzen</button>
+        <button type="button" data-action="ersetzen-alle"
+                aria-label="Alle Fundstellen auf einmal ersetzen">Alle ersetzen</button>
+        <p id="seite-suche-lage" class="lage"></p>
+      </div>
+      <div id="seite-text" class="schreibflaeche" contenteditable="true"
+           spellcheck="false" role="textbox" aria-multiline="true"
+           aria-label="Text der Seite"></div>
+      <ul id="seite-ziele" class="ziele"
+          aria-label="Passende Ziele für den begonnenen Verweis"></ul>
+      <p id="seite-lage" class="lage"></p>
+      <button type="button" data-action="speichern">Speichern</button>
+      <label class="suche" for="seite-neu">Name der neuen Seite</label>
+      <input id="seite-neu" type="text" autocomplete="off">
+      <button type="button" data-action="anlegen">Seite anlegen</button>
+    </div>
+    <aside id="seite-vermerke" class="notices"></aside>
+  </div>
+  <div class="beziehungen">
+    <h3>Beziehungen</h3>
+    <p class="leise">
+      Richtung, Art, Gegenstelle und Begründung. Fehlt eines davon, wird die
+      Zeile nicht geschrieben, weil sonst eine Kante verloren geht.
+    </p>
+    <div class="beziehung-form">
+      <label for="beziehung-richtung">Richtung</label>
+      <select id="beziehung-richtung"></select>
+      <label for="beziehung-art">Art</label>
+      <select id="beziehung-art"></select>
+      <label for="beziehung-ziel">Gegenstelle</label>
+      <select id="beziehung-ziel"></select>
+      <label for="beziehung-grund">Begründung</label>
+      <input id="beziehung-grund" type="text">
+      <button type="button" data-action="beziehung">Beziehung eintragen</button>
+    </div>
+  </div>
+</section>
+
+<section id="vergleich" data-part="wahl" hidden>
+  <h2>Offene Stellen</h2>
+  <p id="vergleich-lage" class="lage"></p>
+  <ul id="vergleich-stellen" class="stellen"></ul>
+</section>
+
+<section id="stand" data-part="wahl" hidden>
+  <h2>Stand</h2>
+  <p id="stand-satz" class="stand"></p>
+  <p id="stand-hinweis" class="leise"></p>
+  <button type="button" data-action="abholen">Abholen anstoßen</button>
+  <button type="button" data-action="einbringen">Einbringen anstoßen</button>
+  <p class="leise">
+    Beides braucht einen Lauf. Diese Seite legt den Auftrag ab, und der nächste
+    Lauf nimmt ihn auf, auch wenn gerade niemand da ist.
+  </p>
+</section>
+
+</main>
+
+</div>
+<script src="core.js"></script>
+<script src="folder.js"></script>
+<script src="marks.js"></script>
+<script src="writing.js"></script>
+<script src="ui.js"></script>
+<script src="i18n.js"></script>
+<script src="project.js"></script>
+<script src="icons.js"></script>
+<script src="graph.js"></script>
+<script src="reviews.js"></script>
+<script src="editorsync.js"></script>
+<script src="officebundle.js"></script>
+<script src="sourceviewer.js"></script>
+<script src="propertydetails.js"></script>
+<script src="host.js"></script>
+<script src="workspace.js"></script>
+</body>
+</html>

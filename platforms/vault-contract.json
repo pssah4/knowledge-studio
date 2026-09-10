@@ -1,0 +1,141 @@
+{
+  "source": "https://github.com/pssah4/vault-operator-dev",
+  "commit": "6a039ce720c95ae7c9938bee6c20cf38305adafd",
+  "sandbox": {
+    "urlAllowlist": [
+      "unpkg.com",
+      "cdn.jsdelivr.net",
+      "registry.npmjs.org",
+      "esm.sh"
+    ],
+    "maxWritesPerMin": 10,
+    "maxRequestsPerMin": 5,
+    "maxWriteSize": 10485760
+  },
+  "pkg": {
+    "maxUncompressedBytes": 104857600,
+    "whitelist": [
+      {
+        "source": "^SKILL\\.md$",
+        "flags": ""
+      },
+      {
+        "source": "^scripts\\/.+$",
+        "flags": ""
+      },
+      {
+        "source": "^references\\/.+$",
+        "flags": ""
+      },
+      {
+        "source": "^assets\\/.+$",
+        "flags": ""
+      },
+      {
+        "source": "^[^/]+\\.skill\\.md$",
+        "flags": ""
+      },
+      {
+        "source": "^LICEN[CS]E(\\.[A-Za-z0-9.-]+)?$",
+        "flags": ""
+      }
+    ]
+  },
+  "blockedPatterns": [
+    {
+      "reason": "eval() is not allowed",
+      "source": "\\beval\\s*\\(",
+      "flags": ""
+    },
+    {
+      "reason": "new Function() is not allowed",
+      "source": "\\bnew\\s+Function\\b",
+      "flags": ""
+    },
+    {
+      "reason": "require() is not allowed",
+      "source": "\\brequire\\s*\\(",
+      "flags": ""
+    },
+    {
+      "reason": "dynamic import() is not allowed",
+      "source": "\\bimport\\s*\\(",
+      "flags": ""
+    },
+    {
+      "reason": "process access is not allowed",
+      "source": "\\bprocess\\b",
+      "flags": ""
+    },
+    {
+      "reason": "__proto__ access is not allowed",
+      "source": "\\b__proto__\\b",
+      "flags": ""
+    },
+    {
+      "reason": "constructor chain traversal is not allowed",
+      "source": "\\.constructor\\.constructor",
+      "flags": ""
+    },
+    {
+      "reason": "arguments.callee is not allowed",
+      "source": "\\barguments\\.callee\\b",
+      "flags": ""
+    },
+    {
+      "reason": "globalThis access is not allowed",
+      "source": "\\bglobalThis\\b",
+      "flags": ""
+    },
+    {
+      "reason": "child_process access is not allowed",
+      "source": "\\bchild_process\\b",
+      "flags": ""
+    },
+    {
+      "reason": "execSync is not allowed",
+      "source": "\\bexecSync\\b",
+      "flags": ""
+    },
+    {
+      "reason": "spawnSync is not allowed",
+      "source": "\\bspawnSync\\b",
+      "flags": ""
+    },
+    {
+      "reason": "indirect eval is not allowed",
+      "source": "\\(\\s*0\\s*,\\s*eval\\s*\\)",
+      "flags": ""
+    },
+    {
+      "reason": "computed eval access is not allowed",
+      "source": "\\[\\s*['\"]eval['\"]\\s*\\]",
+      "flags": ""
+    },
+    {
+      "reason": "setTimeout with string argument is not allowed (use a function)",
+      "source": "\\bsetTimeout\\s*\\(\\s*['\"\\`]",
+      "flags": ""
+    },
+    {
+      "reason": "setInterval with string argument is not allowed (use a function)",
+      "source": "\\bsetInterval\\s*\\(\\s*['\"\\`]",
+      "flags": ""
+    },
+    {
+      "reason": "prototype.constructor access is not allowed",
+      "source": "\\.prototype\\s*\\.\\s*constructor",
+      "flags": ""
+    },
+    {
+      "reason": "array constructor traversal is not allowed",
+      "source": "\\[\\s*\\]\\s*\\.\\s*constructor",
+      "flags": ""
+    },
+    {
+      "reason": "WebAssembly access is not allowed in user code",
+      "source": "\\bWebAssembly\\b",
+      "flags": ""
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "format": "llmwiki-skills/1",
+  "skills": [
+    {
+      "name": "maintain-llm-wiki",
+      "access": "read-write",
+      "interface": {
+        "display_name": "LLM Wiki pflegen",
+        "short_description": "Quellen vollständig erschließen und Wissen pflegen",
+        "default_prompt": "Nutze $maintain-llm-wiki für mein LLM-Wiki."
+      },
+      "references": [
+        "own-notes-and-images.md",
+        "deep-ingest.md",
+        "setup-handoff.md",
+        "setup-sequence.md"
+      ]
+    },
+    {
+      "name": "query-llm-wiki",
+      "access": "read-only",
+      "interface": {
+        "display_name": "LLM Wiki abfragen",
+        "short_description": "Belegte Antworten aus deinem Wissensbestand",
+        "default_prompt": "Nutze $query-llm-wiki für mein LLM-Wiki."
+      }
+    }
+  ]
+}
