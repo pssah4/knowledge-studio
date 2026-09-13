@@ -4,12 +4,15 @@ export function createReviews(environment){
 'use strict';
 const FORMAT='llmwiki-review/1',ROOT='.llmwiki/reviews',MAX_TEXT=2000000;
 const idPattern=/^[a-z0-9-]{20,80}$/i;
-const kinds=['change','proposal','reject','accept','comment','external','resolve','reopen','acknowledge','partial'];
+const kinds=['change','proposal','reject','accept','comment','external','resolve','reopen','acknowledge','partial','contribution_root'];
 const F=()=>global.FolderAccess;
 const msg=(key,values)=>global.I18n.message(key,values);
 function fail(key){throw global.I18n.error(msg(key));}
 function author(value){return typeof value==='string'&&value.trim()!==''&&value.length<=120&&!/[\r\n\x00-\x1f]/.test(value);}
 function valid(e){
+  const identity=v=>typeof v==='string'&&v.length>0&&v.length<200&&!/[\/\\:\x00-\x20]/.test(v),ids=v=>Array.isArray(v)&&v.every(id=>idPattern.test(id));
+  if(e?.norm!==undefined&&(!Number.isInteger(e.norm)||e.norm<1))return false;
+  if(e?.kind==='contribution_root'&&!(e.norm&&identity(e.source?.owner)&&identity(e.source?.document)&&identity(e.source?.target)&&ids(e.cut)&&ids(e.resumes)&&ids(e.predecessors)))return false;
   return Boolean((!e?.anchor||(Number.isInteger(e.anchor.beforeLine)&&Number.isInteger(e.anchor.afterLine)&&Array.isArray(e.anchor.before)&&Array.isArray(e.anchor.after)&&e.anchor.before.every(v=>typeof v==='string')&&e.anchor.after.every(v=>typeof v==='string')))&&e&&e.format===FORMAT&&idPattern.test(e.id)&&kinds.includes(e.kind)&&(author(e.author)||(e.kind==='external'&&e.author===''))&&
     typeof e.page==='string'&&e.page&&!e.page.split('/').some(p=>!p||p==='..'||p==='.'||p.startsWith('.'))&&!/[\\:\x00-\x1f]/.test(e.page)&&
     (e.parent===null||typeof e.parent==='string'&&idPattern.test(e.parent))&&idPattern.test(e.thread)&&
@@ -21,11 +24,12 @@ function event(values){
   const id=global.crypto.randomUUID();
   const e={format:FORMAT,id,kind:values.kind,page:values.page,author:values.author,at:new Date().toISOString(),
     parent:values.parent||null,thread:values.thread||id,base:values.base,text:values.text,message:values.message||'',recipients:values.recipients||[]};
+  for(const key of ['norm','source','cut','resumes','predecessors','circle'])if(Object.hasOwn(values,key))e[key]=values[key];
   if(!valid(e))fail('The change record is incomplete or invalid.');return e;
 }
-function reply(parent,kind,by,base,text,message){
+function reply(parent,kind,by,base,text,message,options={}){
   if(!valid(parent))fail('The change record is incomplete or invalid.');
-  return event({page:parent.page,kind,author:by,base,text,message,parent:parent.id,thread:kind==='comment'&&['change','external','accept'].includes(parent.kind)?null:parent.thread,recipients:!parent.author||parent.author===by?parent.recipients:[parent.author]});
+  return event({page:parent.page,kind,author:by,base,text,message,...(options.circle===undefined?{}:{circle:options.circle}),parent:parent.id,thread:kind==='comment'&&['change','external','accept'].includes(parent.kind)?null:parent.thread,recipients:!parent.author||parent.author===by?parent.recipients:[parent.author]});
 }
 async function hash(text){const bytes=await global.crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));return Array.from(new Uint8Array(bytes),v=>v.toString(16).padStart(2,'0')).join('');}
 async function pageFolder(page){return ROOT+'/'+await hash(page);}
@@ -53,14 +57,39 @@ async function save(dir,page,expected,text,by,parent=null){
   let recorded=false;try{recorded=await receipt(dir,e);}catch(_){/* Return the successful file write and expose the missing receipt. */}
   return {...done,event:e,recorded};
 }
+async function attributeOwn(dir,page,seen,base,by){
+  const current=await F().readFile(dir,page);if(current.text!==seen.text)return {saved:false,stale:true};
+  const e=event({kind:'change',page,author:by,base:base??'',text:current.text,source:'editor_unknown'});
+  await append(dir,e);
+  // The editor already wrote the text. A guarded identical write witnesses that
+  // this is still the observed state before the completion receipt is issued.
+  const done=await F().writeFile(dir,page,current.text,current);if(!done.saved)return {...done,event:e,recorded:false};
+  return {...done,event:e,recorded:await receipt(dir,e)};
+}
 async function accept(dir,e,current,by){
   if(!valid(e))fail('The change record is incomplete or invalid.');
+  if(e.norm===1&&['comment','resolve','reopen','acknowledge'].includes(e.kind)){
+    const journal=await read(dir,e.page);if(!journal.events.some(known=>JSON.stringify(known)===JSON.stringify(e)))return {saved:false,stale:true};
+    // Forwarding a conversation is an explicit no-text-change acceptance.
+    // Its historical snapshots never replace the current home document.
+    return save(dir,currentPage(await aliases(dir),e.page),current,current.text,by,e);
+  }
+  if(e.norm===1&&['change','accept','proposal','reject','partial'].includes(e.kind)&&global.WikiCore){
+    const journal=await read(dir,e.page),witness=journal.events.some(known=>JSON.stringify(known)===JSON.stringify(e)),form=global.WikiCore.transferForm;
+    // A normalized incoming snapshot omits local contribution controls. Preserve
+    // those controls, but accept only the witnessed base or already-applied text.
+    if(!witness||![form(e.base),form(e.text)].includes(form(current.text)))return {saved:false,stale:true};
+    return save(dir,currentPage(await aliases(dir),e.page),current,global.WikiCore.composeHome(e.text,current.text),by,e);
+  }
   if(current.text!==e.text&&(['change','external'].includes(e.kind)||current.text!==e.base)){
     const journal=await read(dir,e.page),parts=journal.events.filter(p=>p.kind==='partial'&&p.parent===e.id&&p.text===current.text);
     const proven=parts.some(p=>journal.events.some(a=>a.kind==='accept'&&a.parent===p.id&&a.text===current.text));
     if(!['proposal','reject'].includes(e.kind)||!proven)return {saved:false,stale:true};
   }
-  return save(dir,currentPage(await aliases(dir),e.page),current,e.text,by,e);
+  // Restoring a raw local history snapshot changes authored content, while the
+  // home's current contribution selection and derived navigation stay local.
+  const core=global.WikiCore,contributes=core&&Array.isArray(core.parseDocument(current.text).head.contribute_to);
+  return save(dir,currentPage(await aliases(dir),e.page),current,contributes?core.composeHome(e.text,current.text):e.text,by,e);
 }
 async function directory(dir,path){for(const part of path.split('/'))dir=await dir.getDirectoryHandle(part);return dir;}
 async function readOwn(dir,page=null){
@@ -79,7 +108,7 @@ async function readOwn(dir,page=null){
     }
   }
   await scan(root,0);const events=[],pending=[];
-  for(const e of found){if(['change','accept'].includes(e.kind)&&receipts.get(e.id)!==await hash(JSON.stringify(e))){incomplete++;pending.push(e);continue;}events.push(e);}
+  for(const e of found){if(['change','accept','contribution_root'].includes(e.kind)&&receipts.get(e.id)!==await hash(JSON.stringify(e))){incomplete++;pending.push(e);continue;}events.push(e);}
   // Timestamp only orders the presentation. Content equality, never a clock, gates writes.
   events.sort((a,b)=>a.at.localeCompare(b.at)||a.id.localeCompare(b.id));
   return {events,incomplete,unreadable,pending};
@@ -111,8 +140,16 @@ function incoming(events,by,seen){
 }
 // A journal is evidence, not an inbox. First observation establishes a baseline;
 // subsequent content differences and unanswered conversations are actionable.
+function contributionIncoming(events,current){
+ const core=global.WikiCore;if(!core?.compareForm)return [];
+ const head=core.parseDocument(current).head;if(!Array.isArray(head.contribute_to)||!head.contribute_to.length||head.shared_copy&&!head.shared_copy.until)return [];
+ const statement=core.compareForm(current),accepted=new Set(events.filter(e=>e.kind==='accept'&&e.norm===undefined).map(e=>e.parent));
+ return events.filter(e=>e.kind==='change'&&e.norm===1&&e.source!=='discard'&&!accepted.has(e.id)&&core.compareForm(e.base)===statement&&core.compareForm(e.text)!==statement);
+}
+function initialSeen(events,current){const pending=new Set(contributionIncoming(events,current).map(e=>e.id));return events.filter(e=>['change','accept'].includes(e.kind)&&!pending.has(e.id)).map(e=>e.id);}
 async function tasks(events,by,checkpoint,current,page){
-  const replies=incoming(events,by,checkpoint?.seen||[]).filter(e=>!['change','external'].includes(e.kind));
+  const pending=new Set(contributionIncoming(events,current).map(e=>e.id));
+  const replies=incoming(events,by,checkpoint?.seen||[]).filter(e=>!['change','external'].includes(e.kind)||pending.has(e.id));
   if(!checkpoint||checkpoint.text===current)return replies;
   let change=events.slice().reverse().find(e=>['change','accept'].includes(e.kind)&&e.text===current&&e.base!==e.text);
   if(!change){
@@ -195,7 +232,7 @@ async function notices(dir,text){
   }
   return found;
 }
-global.WikiReviews={selectChanges,revertChanges:(before,after,selection)=>selectChanges(before,after,selection,true),threadState,aliases,currentPage,event,valid,reply,save,accept,append,read,incoming,tasks,localKey,checkpoint,diff,attribution,hash,eventPath,receipt,parseNotice,notices};
+global.WikiReviews={selectChanges,revertChanges:(before,after,selection)=>selectChanges(before,after,selection,true),threadState,aliases,currentPage,event,valid,reply,save,accept,attributeOwn,append,read,incoming,initialSeen,tasks,localKey,checkpoint,diff,attribution,hash,eventPath,receipt,parseNotice,notices};
 })(environment);
 return environment.WikiReviews;
 }

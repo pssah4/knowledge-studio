@@ -4,7 +4,7 @@ import {readRegister} from './core/ontology.mjs';
 import {relativePath,requireThat,nonempty} from './core/errors.mjs';
 import {visibleKnowledge,STATUS_VALUES} from './content.mjs';
 import {proposal,prepareChanges,operateChanges} from './change-set.mjs';
-export const coreFields=new Set('id type status title description class owner related readers language aliases tags generated sources verified stale_after postponed_until postponed_reason resource source_id extraction superseded_by source_created_at source_modified_at generated_at'.split(' '));
+export const coreFields=new Set('id type status title description class owner related readers language aliases tags generated sources verified stale_after postponed_until postponed_reason resource source_id extraction superseded_by source_created_at source_modified_at generated_at contribute_to shared_copy'.split(' '));
 export const fieldFile='schema/FIELDS.json';
 export async function readFields(store){const file=await store.read(fieldFile);const data=file?JSON.parse(file.text):{format:'llmwiki-fields/1',fields:[]};requireThat(data.format==='llmwiki-fields/1'&&Array.isArray(data.fields)&&data.fields.every(f=>typeof f.name==='string')&&new Set(data.fields.map(f=>f.name)).size===data.fields.length,'fields','Invalid field register.');return {file,data};}
 const eq=(a,b)=>JSON.stringify(a)===JSON.stringify(b);

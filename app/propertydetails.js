@@ -44,5 +44,21 @@ function open({key,source,modal,onApply}){
  d.foot.append(button('Cancel',()=>d.dialog.close()),button('Apply',()=>{if(!tree.reportValidity()||error.textContent)return;try{onApply(draft);d.dialog.close();}catch(e){error.textContent=global.I18n.fromError(e);}}));render();
  const first=tree.querySelector('input,textarea');first?.focus();return d;
 }
-global.PropertyDetails={open};
+function renderContributionStatus({container,status,onReview}){
+ const rows=Array.isArray(status)?status:[status],section=el('section','ws-contribution-status');
+ function text(parent,value){global.I18n.appendText(parent,value);}
+ const heading=el('h3');text(heading,global.I18n.message('Contribution targets'));section.append(heading);
+ for(const item of rows){
+  const row=el('div','ws-property'),target=typeof item.target==='string'?{bundle_id:item.target}:item.target??{};
+  row.append(el('strong','',target.title??target.bundle_id??''));if(target.title)row.append(el('p','',target.bundle_id??''));
+  if(target.readers?.length){const readers=el('p');text(readers,global.I18n.message('Readers: {readers}',{readers:target.readers.join(', ')}));row.append(readers);}
+  const state=el('p');text(state,global.I18n.message(item.confirmed?'A contribution approval is recorded.':'This contribution has not been approved.'));row.append(state);
+  const states={current:'Current with this target.',pending:'Changes are waiting for this target.',closed:'Contribution closed.',conflict:'There are differences to review with this target.'};
+  if(states[item.state]){const progress=el('p','ws-contribution-progress');text(progress,global.I18n.message(states[item.state]));row.append(progress);const last=el('p','ws-muted');text(last,global.I18n.message(item.last_success?'Last successful exchange: {time}':'No successful exchange recorded yet.',{time:item.last_success}));row.append(last);}
+  if(item.destination)row.append(el('p','',item.destination));if(item.reason&&item.reason!=='contribution_record_missing')row.append(el('p','ws-muted',item.reason));
+  if(onReview){const review=el('button');review.type='button';text(review,global.I18n.message('Review contribution'));review.addEventListener('click',()=>onReview(item));row.append(review);}section.append(row);
+ }
+ container.replaceChildren(section);return section;
+}
+global.PropertyDetails={open,renderContributionStatus};
 })(globalThis);

@@ -1,5 +1,5 @@
 /** Markdown/frontmatter contract (ADR-11/26). Changes retain every untouched source byte. */
-import {parseDocument as parseYaml, stringify, isMap} from 'yaml';
+import {parseDocument as parseYaml, stringify, isMap, isAlias} from 'yaml';
 import {requireThat, WikiError} from './errors.mjs';
 const technicalKeys=['resource','generated','sources','extraction','source_id'];
 const presentationKeys=['resource','source_created_at','source_modified_at','generated_at'];
@@ -88,24 +88,86 @@ export function mapAuthored(text,transform){
  let result='',at=0;for(const m of text.matchAll(protectedParts)){result+=transform(text.slice(at,m.index))+m[0];at=m.index+m[0].length;}return result+transform(text.slice(at));
 }
 export function stripNavigation(text,{members=true,legacy=false}={}){return mapAuthored(text,part=>{
- part=part.replace(/<!-- llmwiki:provenance:start -->[\s\S]*?<!-- llmwiki:provenance:end -->\n?/g,'');
- part=part.replace(/<!-- vault-operator:incoming-links -->[\s\S]*?<!-- \/vault-operator:incoming-links -->\n?/g,'');
- if(members)part=part.replace(/<!-- llmwiki:members:start -->[\s\S]*?<!-- llmwiki:members:end -->\n?/g,'');
+ part=part.replace(/<!-- llmwiki:(provenance|shared|radar-view|radar-state):start -->[\s\S]*?<!-- llmwiki:\1:end -->(?:\r?\n)?/g,'');
+ part=part.replace(/<!-- vault-operator:incoming-links -->[\s\S]*?<!-- \/vault-operator:incoming-links -->(?:\r?\n)?/g,'');
+ if(members)part=part.replace(/<!-- llmwiki:members:start -->[\s\S]*?<!-- llmwiki:members:end -->(?:\r?\n)?/g,'');
  if(legacy)part=part.replace(/<!-- derived incoming -->[\s\S]*?<!-- \/derived -->\n?/g,'');return part;
 });}
 export function statementText(source) {
-  source=stripNavigation(source);
+  return statementBody(stripNavigation(source),true);
+}
+function statementBody(source,stripBlockIds) {
   const kept=[],hidden=[];let fence=null,inside=false;
   for(const original of source.match(/[^\n]*\n|[^\n]+$/g)??[]){
     let line=original;const marker=/^ {0,3}(`{3,}|~{3,})/.exec(line);
     if(marker){if(!fence)fence=marker[1];else if(marker[1][0]===fence[0]&&marker[1].length>=fence.length)fence=null;}
     if(inside){hidden.push(line);if(!fence&&/^ {0,3}<!--\s*\/derived\s*-->\s*$/.test(line)){inside=false;hidden.length=0;if(kept.length&&!kept.at(-1).trim())kept.pop();}continue;}
     if(!fence&&!marker&&/^ {0,3}<!--\s*derived\b[^>]*-->\s*$/.test(line)){inside=true;hidden.push(line);continue;}
-    if(!fence&&!marker)line=line.replace(/ \^[a-zA-Z0-9-]+(?=\r?\n?$)/,'');
+    if(stripBlockIds&&!fence&&!marker)line=line.replace(/ \^[a-zA-Z0-9-]+(?=\r?\n?$)/,'');
     if(!fence&&/^\|\s*in\s*\|/.test(line))continue;
     kept.push(line);
   }
   return kept.concat(hidden).join('');
+}
+
+/** Contribution norm 1: only control fields and derived text leave the source. */
+export function transferForm(source){
+ const p=parseDocument(source),edits=[];
+ const indirect=node=>Boolean(node&&typeof node==='object'&&(node.anchor||isAlias(node)||(node.items??[]).some(item=>indirect(item.key)||indirect(item.value)||indirect(item))));
+ for(const pair of p.yaml?.contents?.items??[]){
+  const key=pair.key?.value;
+  requireThat(key!=='<<'&&!(key==='contribute_to'&&indirect(pair.value)),'contribute_to_anchored','Contribution targets must be written directly, without YAML anchors or merge keys.');
+  if(!['contribute_to','shared_copy'].includes(key))continue;
+  const start=pair.key.range[0];let end=pair.value?.range?.[2]??pair.key.range[2];
+  if(!pair.value){const eol=p.raw.indexOf('\n',end);end=eol<0?p.raw.length:eol+1;}
+  edits.push({start,end});
+ }
+ let raw=p.raw;for(const edit of edits.sort((a,b)=>b.start-a.start))raw=raw.slice(0,edit.start)+raw.slice(edit.end);
+ const body=mapAuthored(stripNavigation(p.body),part=>statementBody(part,false));
+ return p.prefix+raw+p.suffix+(p.metadataPrefix??'')+body;
+}
+export function compareForm(source){return statementText(transferForm(source));}
+
+/** Explicit target approval changes only its visible YAML pair. */
+export function setContributionTargets(source,targets){
+ requireThat(Array.isArray(targets)&&targets.every(target=>typeof target==='string'&&target.length>0),'contribution_targets','Contribution targets must be a list of identifiers.');
+ transferForm(source);const p=parseDocument(source),eol=p.prefix.includes('\r\n')?'\r\n':'\n';
+ const written=stringify({contribute_to:targets},{lineWidth:0}).replace(/\n/g,eol);
+ if(!p.yaml)return '---'+eol+written+'---'+eol+source;
+ const pair=p.yaml.contents?.items.find(item=>item.key?.value==='contribute_to');let raw=p.raw;
+ if(pair){let end=pair.value?.range?.[2]??pair.key.range[2];if(!pair.value){const at=raw.indexOf('\n',end);end=at<0?raw.length:at+1;}raw=raw.slice(0,pair.key.range[0])+written+raw.slice(end);}else raw+=written;
+ return p.prefix+raw+p.suffix+(p.metadataPrefix??'')+p.body;
+}
+
+/** Rebuild target display while preserving all authored and metadata bytes. */
+export function compose(source,{owner,owner_title,also_in=[],pushed_by,pushed_at}={},local=null){
+ requireThat(typeof owner==='string'&&owner.length>0,'contribution_owner','A replica needs its owner.');
+ requireThat(Array.isArray(also_in)&&also_in.every(item=>typeof item?.id==='string'&&typeof item?.title==='string'),'contribution_targets','Replica display targets need an id and title.');
+ const p=parseDocument(transferForm(source)),mark={owner,...(owner_title===undefined?{}:{owner_title}),also_in,...(pushed_by===undefined?{}:{pushed_by}),...(pushed_at===undefined?{}:{pushed_at})};
+ const eol=p.prefix.includes('\r\n')?'\r\n':'\n',written=stringify({shared_copy:mark},{lineWidth:0}).replace(/\n/g,eol);
+ const display=value=>String(value).replace(/[\r\n]+/g,' ').replace(/[<>]/g,'');
+ const places=also_in.map(item=>display(item.title)).join(', '),who=display(owner_title??owner);
+ let message='Diese Seite pflegt '+who+(places?' auch in: '+places:'.');
+ if(places)message+='.';
+ message+=owner_title&&pushed_by?' Zuletzt eingebracht von '+display(pushed_by)+(pushed_at?' am '+display(pushed_at).slice(0,10):'')+'.':' Änderungen hier erreichen die anderen erst, wenn '+who+' sie annimmt.';
+ const callout=['<!-- llmwiki:shared:start -->','> [!info] Geteilte Seite','> '+message,'<!-- llmwiki:shared:end -->',''].join(eol);
+ const navigation=local===null?'':navigationBlocks(parseDocument(local).body).filter(block=>!block.startsWith('<!-- llmwiki:shared:start -->')).join('');
+ return (p.yaml?p.prefix+p.raw+written+p.suffix:'---'+eol+written+'---'+eol)+(p.metadataPrefix??'')+callout+navigation+p.body;
+}
+
+function navigationBlocks(body){const blocks=[];
+ mapAuthored(body,part=>{for(const match of part.matchAll(/<!-- llmwiki:(provenance|shared|radar-view|radar-state|members):start -->[\s\S]*?<!-- llmwiki:\1:end -->(?:\r?\n)?|<!-- vault-operator:incoming-links -->[\s\S]*?<!-- \/vault-operator:incoming-links -->(?:\r?\n)?|^ {0,3}<!--\s*derived\b[^>]*-->[^]*?^ {0,3}<!--\s*\/derived\s*-->[^\S\r\n]*(?:\r?\n)?|^\|\s*in\s*\|[^\n]*(?:\n|$)/gm))blocks.push(match[0]);return part;});return blocks;
+}
+
+/** Restore home-only controls and navigation after accepting a remote statement. */
+export function composeHome(remote,local){
+ const p=parseDocument(transferForm(remote)),home=parseDocument(local);transferForm(local);
+ const pair=home.yaml?.contents?.items.find(item=>item.key?.value==='contribute_to');
+ let field='';if(pair){let end=pair.value?.range?.[2]??pair.key.range[2];if(!pair.value){const eol=home.raw.indexOf('\n',end);end=eol<0?home.raw.length:eol+1;}field=home.raw.slice(pair.key.range[0],end);}
+ const blocks=navigationBlocks(home.body);
+ const eol=p.prefix.includes('\r\n')?'\r\n':'\n';
+ const head=p.yaml?p.prefix+p.raw+field+p.suffix:field?'---'+eol+field+'---'+eol:'';
+ return head+(p.metadataPrefix??'')+blocks.join('')+p.body;
 }
 
 export function mirroredContent(body){const start='<!-- llmwiki:source:start -->',end='<!-- llmwiki:source:end -->',a=body.indexOf(start),b=body.indexOf(end);if(a<0||b<a)return null;return body.slice(a+start.length,b).replace(/^\n## Source content\n\n/,'').replace(/\n$/,'');}

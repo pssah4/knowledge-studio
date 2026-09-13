@@ -82,9 +82,9 @@ export async function nodeSync(root,request,{bindings={}}={}){
  }
  try{
   if(state.phase==='sync'){
-   state.result=await sync.run({work:handle(c.work),remote:handle(c.remote),identity:c.identity,canPublish:c.canPublish,step});scope.check();state.phase='work_graph';
+   state.result=await sync.run({work:handle(c.work),remote:handle(c.remote),identity:c.identity,canPublish:c.canPublish,...c.syncOptions,ownerRemote:c.syncOptions.contributionMeta.owner.wiki?handle(c.syncOptions.contributionMeta.owner.wiki):null,step});scope.check();state.phase='work_graph';
   }else if(state.phase==='work_graph'){
-   await exportGraph(c.work);scope.check();state.phase=c.canPublish?'remote_graph':'project_graph';
+   await exportGraph(c.work);scope.check();state.phase=c.canPublish&&c.syncOptions.scope==='full'?'remote_graph':'project_graph';
   }else if(state.phase==='remote_graph'){
    await exportGraph(c.remote);scope.check();state.phase='project_graph';
   }else if(state.phase==='project_graph'){

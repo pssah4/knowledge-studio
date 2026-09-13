@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 const root=new URL('../',import.meta.url);
 export async function syncContracts({check=false}={}){
   const outputs=new Map();
-  for(const [file,name,exposed] of [['reviews','createReviews','WikiReviews'],['editorsync','createSync','EditorSync'],['project','createProject','ProjectSettings']]){
+  for(const [file,name,exposed] of [['reviews','createReviews','WikiReviews'],['contributions','createContributions','WikiContributions'],['contribution-lifecycle','createContributionLifecycle','WikiContributionLifecycle'],['participation-sync','createParticipationSync','WikiParticipationSync'],['editorsync','createSync','EditorSync'],['project','createProject','ProjectSettings']]){
     const source=await fs.readFile(new URL('app/'+file+'.js',root),'utf8');
     const start=source.indexOf('(function (global)')>=0?source.indexOf('(function (global)'):source.indexOf('(function(global)');
     const body=source.slice(start).replace(/\}\)\((?:globalThis|typeof globalThis === "object" \? globalThis : this)\);\s*$/,'})(environment);');

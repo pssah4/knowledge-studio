@@ -22,7 +22,7 @@ function boundedStore(store,guard){
   const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
  }});
 }
-const sourcePaths=async store=>(await store.list('')).filter(e=>e.kind==='file').map(e=>e.path).sort();
+const sourcePaths=async(store,prefix='')=>(await store.list(prefix)).filter(e=>e.kind==='file').map(e=>e.path).sort();
 const sameNames=(a,b)=>a.length===b.length&&a.every((name,i)=>name===b[i]);
 function queue(state,kind,value){
  if(value.error){state.scan_ok=false;state.maintenance_complete=false;}
@@ -62,6 +62,11 @@ function deliver(state,maxItems){
 export async function monitor(root,request,{bindings={}}={}){
  const budget=integer(request.budget_ms,20000,100,20000,'budget_ms'),readTimeout=Math.min(integer(request.read_timeout_ms,2000,25,5000,'read_timeout_ms'),Math.floor(budget/4));
  const maxFiles=integer(request.max_files,128,1,256,'max_files'),maxItems=integer(request.max_items,64,1,128,'max_items');
+ const summary=request.report==='summary';
+ requireThat(request.report===undefined||summary,'monitor_report','report must be "summary" when supplied.');
+ if(request.connection!==undefined)requireThat(typeof request.connection==='string'&&request.connection,'connection','Select an existing connection.');
+ if(request.source!==undefined)requireThat(typeof request.source==='string'&&request.source,'source','Select an assigned source.');
+ if(request.prefix!==undefined)requireThat(typeof request.prefix==='string','prefix','Select a source-relative prefix.');
  const deadline=Date.now()+budget;let readTimedOut=false,readFailure=null;
  const guard=(operation,details)=>{
   if(readFailure)throw readFailure;
@@ -79,10 +84,14 @@ export async function monitor(root,request,{bindings={}}={}){
   requireThat(checkpoint.format===FORMAT&&checkpoint.identity===identity&&Date.now()-checkpoint.started_at<24*60*60*1000,'monitor_stale','The project, bindings or scan age changed. Start a fresh monitor without a cursor.');
   state=checkpoint;
  }else{
-  const tasks=project.connections.map(link=>({kind:'notes',connection:link.id,wiki:link.wiki}));
-  for(const link of project.connections)for(const source of link.sources)tasks.push({kind:'pairs',connection:link.id,wiki:link.wiki,source});
-  state={format:FORMAT,identity,started_at:Date.now(),tasks,task:0,current:null,queue:[],scan_ok:true,maintenance_complete:true,files_scanned:0};
+  const links=request.connection===undefined?project.connections:project.connections.filter(link=>link.id===request.connection);
+  requireThat(links.length,'connection','Select an existing connection.');
+  const tasks=links.map(link=>({kind:'notes',connection:link.id,wiki:link.wiki}));
+  for(const link of links)for(const source of link.sources)if(request.source===undefined||source===request.source)tasks.push({kind:'pairs',connection:link.id,wiki:link.wiki,source,prefix:request.prefix??''});
+  if(request.source!==undefined)requireThat(tasks.some(task=>task.kind==='pairs'),'source','Select a source assigned to the selected connection.');
+  state={format:FORMAT,identity,started_at:Date.now(),tasks,task:0,current:null,queue:[],scan_ok:true,maintenance_complete:true,files_scanned:0,report:summary?'summary':'full'};
  }
+ state.report??='full';
  let filesRead=0;
  // Deliver queued results before scanning more, so output stays bounded even for large wikis.
  while(!state.queue.length&&state.task<state.tasks.length&&!readTimedOut&&Date.now()<deadline&&filesRead<maxFiles){
@@ -96,7 +105,7 @@ export async function monitor(root,request,{bindings={}}={}){
    }
    const source=c.sources.find(s=>s.id===task.source);
    if(!source?.store)throw new WikiError(source?.error?.code??'binding',source?.error?.message??'Source store unavailable.');
-   if(!state.current)state.current={files:await sourcePaths(source.store),originals:[],phase:'scan',validated:0};
+   if(!state.current)state.current={files:await sourcePaths(source.store,task.prefix),originals:[],phase:'scan',validated:0};
    const scan=state.current;
    if(scan.phase==='scan'){
    while(scan.originals.length<scan.files.length&&filesRead<maxFiles&&deadline-Date.now()>readTimeout&&!readTimedOut){
@@ -113,7 +122,7 @@ export async function monitor(root,request,{bindings={}}={}){
    if(scan.originals.length===scan.files.length)scan.phase='validate';
    break;
    }
-   requireThat(sameNames(scan.files,await sourcePaths(source.store)),'monitor_source_changed','The source directory changed during this scan. Start a fresh monitor; no missing or renamed state was inferred.');
+   requireThat(sameNames(scan.files,await sourcePaths(source.store,task.prefix)),'monitor_source_changed','The source directory changed during this scan. Start a fresh monitor; no missing or renamed state was inferred.');
    if(scan.phase==='validate'){
     let checked=0;
     while(scan.validated<scan.originals.length&&checked<512&&deadline-Date.now()>readTimeout){
@@ -124,15 +133,21 @@ export async function monitor(root,request,{bindings={}}={}){
     if(scan.validated===scan.originals.length)scan.phase='compare';
     break;
    }
-   const plan=await timed(()=>compareInventory(c.work,source,scan.originals.map(({version,...item})=>item),{listedPaths:new Set(scan.files)}),Math.max(1,deadline-Date.now()),{operation:'source_plan',...ids});
-   queue(state,'pairs',{...ids,plan});state.current=null;state.task++;
+   const plan=await timed(()=>compareInventory(c.work,source,scan.originals.map(({version,...item})=>item),{prefix:task.prefix,listedPaths:new Set(scan.files)}),Math.max(1,deadline-Date.now()),{operation:'source_plan',...ids});
+   if(state.report==='summary'){
+    const actionable=plan.changes.filter(item=>item.state!=='unchanged');
+    if(actionable.length)state.maintenance_complete=false;
+    if(plan.changes.some(item=>item.state==='unreadable'))state.scan_ok=false;
+    state.queue.push({kind:'pairs',value:{...ids,summary:{scope:plan.scope,counts:plan.counts,samples:actionable.slice(0,5).map(item=>({path:item.path,state:item.state})),findings_omitted:Math.max(0,actionable.length-5)},triage_only:true}});
+   }else queue(state,'pairs',{...ids,plan});
+   state.current=null;state.task++;
   }catch(error){queue(state,task.kind,{...ids,error:failure(error)});state.current=null;state.task++;}
  }
  const output=deliver(state,maxItems),scanFinished=state.task===state.tasks.length,deliveryComplete=scanFinished&&!state.queue.length;
  const pending=!deliveryComplete;
- const result={...output,scan_finished:scanFinished,scan_complete:scanFinished&&state.scan_ok,delivery_complete:deliveryComplete,complete:deliveryComplete&&state.scan_ok&&state.maintenance_complete,
+ const result={...output,report:state.report,scan_finished:scanFinished,scan_complete:scanFinished&&state.scan_ok,delivery_complete:deliveryComplete,complete:state.report==='full'&&deliveryComplete&&state.scan_ok&&state.maintenance_complete,
   progress:{files_read:filesRead,files_scanned:state.files_scanned,tasks_finished:state.task,tasks_total:state.tasks.length,...(state.current?{source:state.tasks[state.task].source,source_files:state.current.files.length,source_files_scanned:state.current.originals.length,phase:state.current.phase,source_files_validated:state.current.validated}:{})},
-  next_request:null,next:pending?'Continue with next_request until delivery_complete. Retain every response.':'Process all delivered source and note findings. Unreadable items remain unresolved; this scan never acknowledges maintenance.'};
+  next_request:null,next:pending?'Continue with next_request until delivery_complete. Retain every response.':state.report==='summary'?'Triage only: choose a connection/source/prefix and run a full source.monitor before processing findings.':'Process all delivered source and note findings. Unreadable items remain unresolved; this scan never acknowledges maintenance.'};
  if(readTimedOut){result.read_timeout=true;result.unresolved=state.current?.originals.filter(f=>f.code==='monitor_read_timeout').slice(-1).map(f=>({source:state.tasks[state.task].source,path:f.path,error:f.error}))??[];}
  const text=JSON.stringify(state)+'\n';requireThat(new TextEncoder().encode(text).length<=MAX_CHECKPOINT_BYTES,'monitor_checkpoint_limit','The monitor checkpoint exceeds 32 MiB. The scan remains incomplete.');
  // Writes use the real adapter’s CAS and verification, not a raced background mutation.

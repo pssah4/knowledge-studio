@@ -1,96 +1,96 @@
 {
   "format": "llmwiki-release/1",
-  "version": "0.4.24",
+  "version": "0.4.26",
   "workshop": {
     "catalog": "skills/catalog.json",
     "profiles": "platforms/profiles.json",
-    "sha256": "32a4285845b4a78e135c20febeccca80cbdee5a004a3ab5671c6af104cef534c"
+    "sha256": "44b806469847209d3950240a48d2535ec17d7ed7b69ea710673b42b873c54791"
   },
   "packages": [
     {
       "profile": "claude-code",
       "skill": "maintain-llm-wiki",
       "file": "claude-code/maintain-llm-wiki.skill",
-      "sha256": "b3229c4c9ad925850f857a1668f0c6323a4ef8672d7e48248d058f5bd11232c2",
-      "bytes": 6628297,
+      "sha256": "117c505d150884cf1287ea331865d28717005aa0dd7b2b9ee8a7224e066aa6db",
+      "bytes": 6749965,
       "files": 227
     },
     {
       "profile": "claude-code",
       "skill": "query-llm-wiki",
       "file": "claude-code/query-llm-wiki.skill",
-      "sha256": "6d0bfd172f33a4aa65b537baec535b3096a19708af41cd7d470632336516f767",
-      "bytes": 6680220,
+      "sha256": "78f133a74e847d8b61d77a3a0ff81ba33caeaef3d73b81c825af0438e1783747",
+      "bytes": 6834371,
       "files": 225
     },
     {
       "profile": "claude-cowork",
       "skill": "maintain-llm-wiki",
       "file": "claude-cowork/maintain-llm-wiki.skill",
-      "sha256": "bac54fa1874dced6809c97f5fbb82e94d314ed39283c653d3b1249ceccd8dd2c",
-      "bytes": 6628382,
+      "sha256": "4ae75f7ec16d3e0470d4b9fb2fea36747ea91b4736f0064eaedef13efc35bfcf",
+      "bytes": 6750050,
       "files": 227
     },
     {
       "profile": "claude-cowork",
       "skill": "query-llm-wiki",
       "file": "claude-cowork/query-llm-wiki.skill",
-      "sha256": "4d89bcb9db932614ffd44e24e03ed79ed9c4111b71186e72e3735b00a3799c2c",
-      "bytes": 6680236,
+      "sha256": "3ef2974d4320b1a9407b7d22611de38aad04b3fc0f2dd76bd2cb528bfff1d6f4",
+      "bytes": 6834386,
       "files": 225
     },
     {
       "profile": "codex",
       "skill": "maintain-llm-wiki",
       "file": "codex/maintain-llm-wiki.skill",
-      "sha256": "f06be15b5cb509fdaa5f0438969843832fbc9640fbca4c4d0d6a85fe2fd208e1",
-      "bytes": 6628645,
+      "sha256": "16bfc9a0a0bac3541c65dae1eebdd9b15cc33feb94145929134a5b0a02f6007e",
+      "bytes": 6750312,
       "files": 228
     },
     {
       "profile": "codex",
       "skill": "query-llm-wiki",
       "file": "codex/query-llm-wiki.skill",
-      "sha256": "76078803ebef32e951d6cf6b425bd8967c8c9a6462b4e005c5bf912cb91e1398",
-      "bytes": 6680587,
+      "sha256": "10f739b0c357ebe0d4296228af090152b5f3b9d250ca44e24f072bdd6a1d8629",
+      "bytes": 6834737,
       "files": 226
     },
     {
       "profile": "chatgpt",
       "skill": "maintain-llm-wiki",
       "file": "chatgpt/maintain-llm-wiki.skill",
-      "sha256": "551138fbeec421d2086c3fbcce84a5284db6d94183c503deaee842c8144ee8f2",
-      "bytes": 6628785,
+      "sha256": "14b81eb98f829b7ae5dde4c0d9cfe5407686b105ed780b1e115b8ba92096c5bf",
+      "bytes": 6750452,
       "files": 228
     },
     {
       "profile": "chatgpt",
       "skill": "query-llm-wiki",
       "file": "chatgpt/query-llm-wiki.skill",
-      "sha256": "5b8c898f76228f385ff758345767991f68063a808f7dbb769807d93f5df1b76c",
-      "bytes": 6680626,
+      "sha256": "5177f3bca78230d499790d6361cf0938cd823cce4d65abe289fd5a3037a4e38a",
+      "bytes": 6834774,
       "files": 226
     },
     {
       "profile": "vault-operator",
       "skill": "maintain-llm-wiki",
       "file": "vault-operator/maintain-llm-wiki.skill",
-      "sha256": "6124b230590576067ea72c05747e2d5ef8d25d19e360196e97f15a33fdea9d4e",
-      "bytes": 3684403,
+      "sha256": "149e528b8a307f41355ae063048743ee2941d7353194d81859e07af608b05906",
+      "bytes": 3799647,
       "files": 27
     },
     {
       "profile": "vault-operator",
       "skill": "query-llm-wiki",
       "file": "vault-operator/query-llm-wiki.skill",
-      "sha256": "8b9786ab7bc02049fa24e9e49140e25eb7f4fec59fd58d397efb1d7c0a5fd7c0",
-      "bytes": 3647406,
+      "sha256": "6e5d7bf3836d5c347265330bff12c720d2d1f06b8713748b515c84f27684bc6b",
+      "bytes": 3757999,
       "files": 23
     }
   ],
   "plugin": {
-    "file": "llm-wiki-0.4.24.zip",
-    "sha256": "f23b9070b1d120628c9caaf9c96cbae417cde4b499c51389ef84626a17675135",
-    "bytes": 13319258
+    "file": "llm-wiki-0.4.26.zip",
+    "sha256": "eab50e7a1ba32439a9257b03389393bc76717b535264af726aa1ca39a51e4449",
+    "bytes": 13595078
   }
 }

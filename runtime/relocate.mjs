@@ -33,12 +33,17 @@ export async function relocate(root,args,{bindings={},editorHTML=null}={}){
  for(const [name,seen]of original){const content=destination.capabilities?.textWritesOnly?(seen.text??new TextDecoder('utf-8',{fatal:true}).decode(seen.bytes)):(seen.bytes??seen.text);await destination.write(name,content,{expected:null});const copied=await destination.read(name,{binary:true});requireThat(copied?.sha256===seen.sha256,'mismatch','Working-copy verification failed.',{page:name});receipt.push({page:name,sha256:seen.sha256});}
  // Sync paths include the working-folder identity; retain the old records and
  // create equivalent baselines for the new identity before any sync can run.
- const wikiIDs=new Set(project.connections.filter(x=>x.works.includes(c.workFolder.id)).map(x=>x.wiki));
- for(const wikiID of wikiIDs){
-  const wiki=project.folders.find(f=>f.id===wikiID),priorIdentity=syncIdentity(project,wiki,c.workFolder),identity=syncIdentity(project,wiki,next),oldPrefix='.llmwiki/editor-sync/'+await root.services.hash(priorIdentity)+'/',newPrefix='.llmwiki/editor-sync/'+await root.services.hash(identity)+'/';
+ for(const connection of project.connections.filter(x=>x.works.includes(c.workFolder.id))){
+  const wiki=project.folders.find(f=>f.id===connection.wiki),priorIdentity=syncIdentity(project,wiki,c.workFolder,connection),identity=syncIdentity(project,wiki,next,connection),oldPrefix='.llmwiki/editor-sync/'+await root.services.hash(priorIdentity)+'/',newPrefix='.llmwiki/editor-sync/'+await root.services.hash(identity)+'/';
   for(const [name,seen]of original)if(name.startsWith(oldPrefix)&&name.endsWith('.json')){
    const data=JSON.parse(seen.text??new TextDecoder().decode(seen.bytes));requireThat(data.format==='llmwiki-editor-sync/1'&&data.identity===priorIdentity,'sync','Invalid sync baseline; relocation stopped.');
    await destination.write(newPrefix+name.slice(oldPrefix.length),JSON.stringify({...data,identity}),{expected:null});
+  }
+  if(connection.scope==='participation'){
+   const field=connection.participation.field,priorPath='.llmwiki/participation/'+await root.services.hash(priorIdentity+'/'+field)+'.json',seen=original.get(priorPath);
+   if(seen){const text=seen.text??new TextDecoder().decode(seen.bytes),data=JSON.parse(text);requireThat(data.format==='llmwiki-participation-sync/1'&&data.field===field&&Array.isArray(data.pages),'sync','Invalid participation selection; relocation stopped.');
+    await destination.write('.llmwiki/participation/'+await root.services.hash(identity+'/'+field)+'.json',text,{expected:null});
+   }
   }
  }
  const current=await snapshot(c.work);requireThat(current.size===original.size&&[...original].every(([p,v])=>current.get(p)?.sha256===v.sha256),'stale','The working copy changed during relocation. The original assignment is preserved.');

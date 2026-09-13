@@ -368,8 +368,11 @@ requested scope. These are checks on existing action results, not an extra API.
    next:done, outcome:integrated and complete:true. Deferred/declined appropriation is
    an explicit user outcome, never an integrated source or an ingest shortcut.
 3. Refresh index, synchronize every affected connection, then run readiness for the affected connections. Its complete and
-   knowledge.ready must be true with no findings or blocked_by entries; inspect the
-   relevant workflow sessions separately and retain the source inventory check above.
+   knowledge.ready must be true with no blocking findings or blocked_by entries.
+   A `link_outside_circle` finding is informational only for unchanged replica text
+   covered by its current normalized receipt; unresolved links in originals or
+   unapproved edits still block. Inspect the relevant workflow sessions separately
+   and retain the source inventory check above.
    When an earlier deferred/declined session keeps the overall wiki incomplete, report
    that explicit status separately; do not reclassify the user's decision as consent.
 4. Sync every affected connection and inspect pending and conflicts. Pending writes,
@@ -387,6 +390,38 @@ Use “incomplete” when an indispensable phase remains open. Do not label unre
 source_coverage_unverified findings “expected” and declare the ingest complete.
 
 ## Collaboration and Obsidian
+
+### Clearance recovery and maintenance status
+
+`error.code:"clearance"` pauses synchronization for the affected connection; it
+does not permanently disable it. Read `details.findings` (document/history path,
+field and finding code). The preflight includes both document text and transferable
+history, so editing the current page alone may leave the finding unresolved.
+
+Symbolic home paths such as `~/.claude/settings.json`, `$HOME/.claude/` and
+`${HOME}/.claude/` are portable documentation in version 0.4.25 and newer, including
+in historical text. Concrete absolute device paths, device-binding fields and
+credentials are still checked. A code block is not an exemption. Keep the original
+wording; do not delete documentation, rewrite history or encode a value to evade
+clearance. With older packages, update both skills and the project editor first.
+
+Continue authorized independent work. `note.review` records a local review and
+does not run this sync gate: inspect whether the note is already present in the
+selected working copy and satisfy its ordinary review requirements. If it has not
+arrived there, report that missing prerequisite instead of a permanent review ban.
+After the actual findings are resolved, start a fresh `sync` for that connection
+without replaying an old cursor, then follow its new continuations. There is no
+clearance `resume_request` and no promise that a block disappears automatically.
+
+Before the final maintenance report, check every requested connection and run fresh
+`readiness` for the same scope (no connection filter for whole-project maintenance).
+Completion requires `readiness.complete:true`, finished full monitoring and note
+reviews, and successful final syncs without pending items, conflicts or blocking
+derived findings. A receipted replica may retain an informational
+`link_outside_circle` citation; other unresolved links remain blocking. Preserve any remaining operation error even if another check
+succeeds. Otherwise label the run **incomplete**, list completed parts separately,
+and name each open connection, operation and next step. Do not say “complete except
+for the three notes”; those notes are part of the requested maintenance.
 
 On Node, `sync` is resumable too. For EACH connection, execute every exact
 `next_request` until it is null; retain all returned conflicts and pending findings.
@@ -422,6 +457,8 @@ records acceptance. Replies travel to the other author on sync. Clocks never win
 `review.read` takes `page`, `author`, optional seen event IDs. `review.respond` takes
 `page`, parent event `id`, exact current `expected`, `author`, `choice`
 (`accept`/`reject`/`proposal`/`comment`/`resolve`/`reopen`), optional `text` and `message`. Resolve/reopen append immutable discussion events; they never change file content. Editor comments additionally carry a hunk anchor (quoted before/after lines, line positions, snapshot hashes); read and preserve it when answering. Partial editor acceptance keeps the remaining proposal open.
+Use `circle:"local"` for a discussion excluded from contribution transport. Replies
+retain that restriction. The browser offers the same choice as **Only here**.
 A proposed separate version is a new Markdown page through `write`, linked to its
 parent in the response. Restore an earlier text only through a new guarded save;
 never erase history. In Obsidian the host agent provides the same comparison and
@@ -494,9 +531,20 @@ findings, revision and generated_at. This is the only graph read by the editor.
 Unchanged exports retain their revision/timestamp; Markdown remains authoritative.
 Writes return graph or graph_error; a graph_error does not undo an already saved file.
 
-Maintain-only {"action":"source.monitor"} returns pairs for ALL connections and their
-assigned source roots, recursively. Each pair has plan.changes or an explicit error.
-Use its connection/source IDs for ingest. It plans, it does not claim ingestion.
+Maintain-only {"action":"source.monitor"} returns pairs for all connections and their
+assigned source roots recursively by default. On Node, `connection`, optional `source`, and
+optional source-relative `prefix` restrict a fresh run before any source bytes are
+read. Each full pair has `plan.changes` or an explicit error. Use its
+connection/source IDs for ingest. It plans, it does not claim ingestion.
+
+On Node, for an unexpectedly large or previously unclassified source root, first use
+`{"action":"source.monitor","connection":"<id>","report":"summary"}`. Summary
+mode returns exact per-state counts, up to five actionable path samples, and
+`findings_omitted`; it deliberately sets `complete:false` and is triage, not a
+maintenance result. After choosing scope, run the ordinary full monitor with the
+same connection and, where useful, `source`/`prefix`. This avoids transporting
+thousands of file-level findings merely to decide that most of an archive is out of
+scope. It does not avoid reading the selected originals needed to calculate hashes.
 
 Node runs this action in bounded calls (default 20 seconds of reading, at most 128
 source files and 64 findings per response, below 32 KiB JSON). A single read has a
@@ -871,3 +919,129 @@ resume that transaction before any other action. A text-only bridge may return
 newly created page during rollback. Perform only that exact scoped host operation,
 verify the requested digest, then resume the stage. Missing capabilities are an
 explicit incomplete result; never replace archiving with deletion.
+
+## Contributions from a personal or team home
+
+A contribution keeps one document ID in its home and in explicitly selected target
+wikis. The home remains the place where changes from different targets are accepted.
+Use the normal `sync` action for every connection; there is no separate transport.
+Cloud folders transport files and hidden folders. The runtime does not call cloud APIs.
+
+Configure `llmwiki-project/2` with a private project reader circle and the actual
+readers and writers of each work folder. External work folders require
+`readers_confirmed:true`. A connection uses `scope:"full"` (the default),
+`scope:"contributions"`, or `scope:"participation"`. A work folder can have several
+contribution connections and at most one full connection. Contribution connections
+pin `bundle_id` from the target's `wiki/bundle.md`, `readers`, and optionally
+`comments:true`. A team home also has its full connection. Synchronize that home
+before preparing or sending team contributions. Reader declarations document the
+approved audience; they do not change filesystem permissions. Handles are declared
+identities, not authenticated signatures.
+
+Before contributing on each device, run `contribute.probe` with `connection` and
+`write:true` to write a random device marker and receipt. Let the platform transport
+them, then call `contribute.probe` on the other device without `write`. The ordinary
+sync verifies that the other device's hidden files remain visible and recent.
+`dotfolder_sync_unverified` or `dotfolder_sync_stale` means delivery has not been
+proven. Repeat the actual two-device probe; never manufacture its marker or receipt.
+
+1. Call `contribute.review` with `connection`, `page` and the actual `author`.
+   `pages:[...]` prepares one batch. Show the complete returned transfer text,
+   journal entries, any `identity_changes`, replica notice, destination, readers, links, source fields,
+   custom properties and required attachments. Paths and link labels remain as
+   written. A link whose page is not selected stays a citation; it does not authorize
+   copying that page. The preview shows **More linked pages: n** for resolved pages
+   outside the current selection. Select additional pages with a new `pages` preview;
+   following a link never recursively approves more pages.
+2. After the user approves exactly that preview, call `contribute.confirm` with
+   the same `connection`, returned `id`, `digest` and `author`. Confirmation writes
+   the private document-target record and `contribute_to` field. It does not send
+   files. A changed file, journal, attachment, title or audience invalidates the
+   preview; read a new one instead of substituting hashes.
+3. Run normal `sync` on that connection and read its complete result. Only approved
+   bytes can travel. Later text, journal messages, attachments and replica notices
+   require another exact preview and confirmation. An old contribution record never
+   authorizes new private drafts. Batch review can combine these confirmations.
+4. `contribute.status` with `connection,page` shows that target's state. In sync
+   results inspect `complete`, `pending_details`, `conflicts`, `contribution_state`,
+   `held_by_owner_chain`, `replica_pending`, `proposed` and `received_at`. A successful
+   connection does not make another connection's pending result complete.
+
+For a folder, call `contribute.folder` with `connection,path,mode:"propose"` and
+`step:"review",author`; confirm its returned `id,digest` with `step:"confirm"`.
+The preview lists every file and its flat destination `wiki/<filename>.md`.
+Its `files` entries approve payloads. A collision holds that file's payload; its
+separate `markings` entry approves only the displayed `contribute_to` field change.
+Show each marking's page, destination, field, before and after values before approval.
+For twelve files with two collisions, all twelve can receive the reviewed target
+marking while only ten payloads are released. If a held file changes, confirmation
+returns `contribution_review_stale` before approving any payload. The folder rule
+retains held files in its inventory. `mode:"automatic"` must be chosen explicitly for
+that folder: it marks new files, but their bytes still require a new confirmation.
+An unbound original under this rule reports `source_link_private`. Attachments are
+required parts of the reviewed packet, including readable SVG and Excalidraw text.
+
+An exemplar is read-only in normal editing. Its visible notice names its caretaker
+and the actual bundle titles of its other approved targets. A new target name also
+needs approval at existing targets before their notices change. Private project
+labels and personal home titles are excluded. Use the versions and changes dialogue
+to propose a change or comment. Returning changes preserve their original author;
+forwarding a target's change or discussion to another target requires the home's
+acceptance and a new byte approval. `comments:false` suppresses outgoing discussions,
+not incoming questions. `circle:"local"` discussions and their replies are excluded
+from contribution transport. Full team changes become
+eligible only after a covered home synchronization.
+
+If a shared file changed without a completed journal event, sync reports
+`uncovered_remote_change`. Inspect its recorded external observation and use
+`conflict.resolve` to accept it, keep a reviewed prior target state, or leave the
+conflict open. Recheck the current hashes. A private, unapproved home draft cannot
+be used as a discard replacement. No timestamp chooses a content version.
+
+Lifecycle actions use `step:"review"` with `connection,page,author`, followed by
+`step:"confirm",id,digest,author` after approval of the complete returned changes:
+
+- `contribute.retire` closes the release and archives the target copy. Previously
+  read copies and platform history cannot be recalled. Sharing again creates a
+  fresh root and cut after a new byte review; drafts written during the pause stay
+  private.
+- `contribute.handover` makes the target the home and leaves a scoped redirect.
+  First retire or fork every other target; `handover_pending` identifies unfinished
+  decisions. The completed acceptance and its receipt establish the new ownership.
+- `contribute.fork` gives the target copy a new ID and retains an identity alias.
+  The former contribution closes; the new document can be edited independently.
+- `contribute.takeover` supports `mode:"request"` with a reason and a 30-day objection
+  period, `object`, `complete`, `acknowledge`, and `repair`, using the returned
+  `takeover` ID. Completion forks the target. A remembered objection removed from
+  the mirror is reported as `objection_removed` and can be restored. A recipient
+  with a full connection can request and complete a takeover of a receipted replica;
+  its home identity comes from that receipt. Other owner actions require the
+  contribution connection.
+- `contribute.rekey` reviews an intentional bundle ID/readership change with
+  `role:"target"` (or `"owner"`), `to` and `readers`. The new pin must equal the
+  visible bundle page. It records the decision, rejects collisions and invalidates
+  old byte releases. Review each affected contribution again before sending. An
+  owner change includes minimal identity evidence and a redirect from the old
+  source key in the new contribution preview; the receiving graph then follows
+  that confirmed identity transition.
+
+Lifecycle plans bind the observed files and identity inventories. Resume the same
+plan after interruption; a changed preimage requires a fresh review. A host without
+archive support returns `requires_host_move` with exact source, destination and
+expected digest. Perform that operation and resume; do not replace it with deletion.
+
+Common closed results include `bundle_id_changed`, `audience_changed`,
+`bundle_id_collision`, `rekey_collision`, `contribution_record_missing`,
+`foreign_document_skipped`, `owner_conflict`, `team_copy_not_current`,
+`contribution_name_collision`, `replica_root_missing`, `stale_view`,
+`replica_phase_file_pending`, `contribution_coordination_pending`, and
+`contribution_display_review_pending`. Read the affected files and complete the
+named review or delivery step. A newer `norm` requires an updated runtime;
+older normalized journal versions are skipped. Never bypass these gates by editing
+records or completion receipts.
+
+For a read-only participation view, use `scope:"participation"` and
+`participation:{field:"x_<registered_name>"}`. Sync receives only explicitly selected
+pages and never sends local edits. A page leaving the selection moves to the local
+participation archive; it is not deleted. This view does not subscribe the whole
+wiki and is independent of contribution approval.

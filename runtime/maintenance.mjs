@@ -20,7 +20,7 @@ export async function compareInventory(store,source,originals,{prefix='',paths,l
     if(prior){changes.push({...f,...prior,state:prior.resource.sha256!==f.sha256||prior.resource.availability==='missing'?'changed':prior.integrity.complete?'unchanged':'repair_required'});continue;}
     // A rename is only a candidate when the old original is actually absent and
     // both sides are unique. Copies with equal content remain separate sources.
-    const candidates=[];for(const m of mirrors.filter(m=>m.resource.sha256===f.sha256))if(listedPaths?!listedPaths.has(m.resource.name):!await source.store.read(m.resource.name,{binary:true}))candidates.push(m);
+    const candidates=[];for(const m of mirrors.filter(m=>selected(m.resource.name)&&m.resource.sha256===f.sha256))if(listedPaths?!listedPaths.has(m.resource.name):!await source.store.read(m.resource.name,{binary:true}))candidates.push(m);
     const unique=(!listedPaths||!originals.some(o=>o.error))&&originals.filter(o=>o.sha256===f.sha256&&!known.has(o.path)).length===1;
     changes.push({...f,state:candidates.length===1&&unique?'renamed':'new',...(candidates.length===1&&unique?candidates[0]:{}),previous_name:candidates.length===1&&unique?candidates[0].resource.name:undefined});
   }

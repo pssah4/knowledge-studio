@@ -2,8 +2,13 @@
 import {createReviews} from './compat/reviews.mjs';
 import {createSync} from './compat/editorsync.mjs';
 import {createProject} from './compat/project.mjs';
+import {createContributionLifecycle} from './compat/contribution-lifecycle.mjs';
+import * as contributionIdentity from './core/contribution-identity.mjs';
+import {createParticipationSync} from './compat/participation-sync.mjs';
+import {createContributions} from './compat/contributions.mjs';
 import {matchingBlocks} from './compat/matching.mjs';
-import {parseDocument} from './core/document.mjs';
+import {parseDocument,statementText} from './core/document.mjs';
+import * as documentForms from './core/document.mjs';
 import {relativePath} from './core/errors.mjs';
 
 const missing=()=>Object.assign(new Error('File or directory not found.'),{name:'NotFoundError'});
@@ -22,6 +27,7 @@ export function handle(store,prefix=''){
   };
 }
 const FolderAccess={
+  asDirectory:dir=>dir.kind==='directory'?dir:handle(dir),
   async readBinary(dir,page){const file=await dir.store.read(dir.full(page),{binary:true});if(!file)throw missing();return file;},
   async writeBinary(dir,page,bytes,seen){return dir.store.write(dir.full(page),bytes,{expected:seen?.sha256??null});},
   canArchive:dir=>typeof dir.store.archive==='function',
@@ -31,10 +37,13 @@ const FolderAccess={
   async writeFile(dir,page,value,seen){try{const result=await dir.store.write(dir.full(page),value,{expected:seen?.sha256??seen?.mark??null});return {...result,text:value,mark:result.sha256};}catch(e){if(['stale','busy','mismatch'].includes(e.code))return {saved:false,stale:true,reason:e.message};throw e;}},
   async listFolder(dir,_unused,{visible=()=>true}={}){return (await dir.store.list(dir.prefix)).filter(e=>e.kind==='file'&&visible(e.path,'file')).map(e=>({name:dir.prefix?e.path.slice(dir.prefix.length+1):e.path,size:0}));}
 };
-export const environment={FolderAccess,crypto,matchingBlocks,
+export const environment={FolderAccess,crypto,matchingBlocks,statementText,WikiCore:{...documentForms,...contributionIdentity},
   I18n:{message:key=>key,error:message=>new Error(message)},
   headField:(text,key)=>parseDocument(text).head[key],parseHead:parseDocument};
 export const reviews=createReviews(environment);
+export const contributions=createContributions(environment);
+export const contributionLifecycle=createContributionLifecycle(environment);
+export const participationSync=createParticipationSync(environment);
 export const sync=createSync(environment);
 export const projectSettings=createProject(environment);
 export async function save(store,page,text,author,expected){

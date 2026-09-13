@@ -12,9 +12,26 @@ import {proposal,prepareChanges,operateChanges,readChanges,encodeBytes} from './
 const facade=(source,target)=>({services:source.services,writable:source.writable&&target.writable,capabilities:target.capabilities,reviewStore:p=>p.startsWith('target/')?{store:target,page:p.slice(7)}:{store:source,page:p.startsWith('source/')?p.slice(7):p},hostPath:p=>p.startsWith('target/')?(target.hostPath?.(p.slice(7))??p.slice(7)):(source.hostPath?.(p.startsWith('source/')?p.slice(7):p)??p),read:(p,o)=>p.startsWith('target/')?target.read(p.slice(7),o):source.read(p.startsWith('source/')?p.slice(7):p,o),write:(p,t,o)=>p.startsWith('target/')?target.write(p.slice(7),t,o):source.write(p.startsWith('source/')?p.slice(7):p,t,o)});
 function clearance(text,page){const findings=sync.contentClearance(text,page);requireThat(!findings.length,'clearance','Resolve the sharing findings before transferring this page.',{findings});}
 function scopedText(source,page,sourceWiki,targetWiki,targetPage,graph,assets){
- const p=parseDocument(source),origin={wiki:sourceWiki,path:page};const link=(whole,written,label)=>{if(assets.has(written))return markdownLink(targetPage,assets.get(written),label);const resolved=resolvePage(graph,origin,written),target=graph.pages.get(resolved.key);if(!target)return whole;const self=target.wiki===sourceWiki&&target.path===page;const href=(self?targetWiki:target.wiki)+'/'+(self?targetPage:target.path);return '['+(label||'Referenced document').replace(/[\[\]|\r\n]/g,' ')+']('+href.split('/').map(part=>encodeURIComponent(part).replace(/[!'()*]/g,c=>'%'+c.charCodeAt(0).toString(16))).join('/')+(written.includes('#')?'#'+written.split('#').slice(1).join('#'):'')+')';};
- const convert=text=>mapAuthored(text,part=>part.replace(/(`+)[^\n]*?\1|\[\[([^\]]+)\]\]|\[([^\]]*)\]\(<?([^\s)>]+)>?\)/g,(whole,code,wiki,label,url)=>code?whole:wiki?link(whole,wiki.split('|')[0],wiki.split('|')[1]):link(whole,url,label)));
- let result=source;for(const key of ['related','superseded_by'])if(Array.isArray(p.head[key]))result=patchHead(result,{[key]:p.head[key].map(v=>typeof v==='string'?convert(v):v)});const updated=parseDocument(result);return result.slice(0,updated.offset)+convert(updated.body);
+ const p=parseDocument(source),origin={wiki:sourceWiki,path:page};const link=(whole,written,label)=>{
+  if(assets.has(written))return markdownLink(targetPage,assets.get(written),label);
+  const resolved=resolvePage(graph,origin,written),target=graph.pages.get(resolved.key);if(!target)return whole;
+  const self=target.wiki===sourceWiki&&target.path===page,remaining=target.wiki===sourceWiki&&!self;
+  // A remaining page's path (and heading fragment) can name private content.
+  // Only its opaque identity crosses the boundary; explicit labels are authored text.
+  if(remaining)requireThat(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(target.head.id??''),'transfer_reference_identity','Assign an opaque document identity to the remaining source reference before transferring this page.');
+  const href=(self?targetWiki:target.wiki)+'/'+(self?targetPage:remaining?target.head.id:target.path);
+  const fragment=written.includes('#')?'#'+written.split('#').slice(1).join('#'):'';
+  const anchor=remaining&&!/^#\^[A-Za-z0-9-]+$/.test(fragment)?'':fragment;
+  return '['+(label||'Referenced document').replace(/[\[\]|\r\n]/g,' ')+']('+href.split('/').map(part=>encodeURIComponent(part).replace(/[!'()*]/g,c=>'%'+c.charCodeAt(0).toString(16))).join('/')+anchor+')';
+ };
+ const convert=text=>mapAuthored(text,part=>part.replace(/(`+)[^\n]*?\1|\[\[([^\]]+)\]\]|\[([^\]]*)\]\(<?([^\s)>]+)>?(\s+"[^"\n]*")?\)/g,(whole,code,wiki,label,url,title)=>{
+  if(code)return whole;if(wiki)return link(whole,wiki.split('|')[0],wiki.split('|')[1]);
+  const converted=link(whole,url,label);return converted===whole?whole:converted.replace(/\)$/,()=> (title??'')+')');
+ }));
+ const reference=value=>typeof value!=='string'?value:value.includes('[')?convert(value):link(value,value);
+ let result=source;for(const key of ['related','superseded_by'])if(p.head[key]!=null)result=patchHead(result,{[key]:Array.isArray(p.head[key])?p.head[key].map(reference):reference(p.head[key])});
+ const updated=parseDocument(result),body=mapAuthored(convert(updated.body),part=>part.replace(/^(\|\s*(?:out|in)\s*\|[^|\r\n]*\|[ \t]*)([^|\r\n]*?)([ \t]*\|.*)$/gm,(whole,before,value,after)=>before+reference(value)+after));
+ return result.slice(0,updated.offset)+body;
 }
 export async function transfer(root,c,args,options){
  const {step='preview'}=args;let details;

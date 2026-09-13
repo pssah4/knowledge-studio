@@ -2,12 +2,13 @@
 import {buildGraph,resolvePage,pageKey,graphProjection} from './core/graph.mjs';
 export async function fromDocuments(documents,wikis){
   if(!wikis.length)return {nodes:[],edges:[],unresolved:0,core:null};
-  const scopes=wikis.map(w=>{const files=new Map(documents.filter(d=>d.wiki===w.id).map(d=>[d.path,d]));return {...w,store:{read:async path=>files.get(path)??null,list:async()=>[...files.keys()].map(path=>({path,kind:'file'}))}};});
+  const scopes=wikis.map(w=>{const files=new Map(documents.filter(d=>d.wiki===w.id).map(d=>[d.path,d]));return {...w,store:w.store??{read:async path=>files.get(path)??null,list:async()=>[...files.keys()].map(path=>({path,kind:'file'}))}};});
   const core=await buildGraph(scopes,{allowMissingRegister:true});
-  return {core,nodes:graphProjection(core).pages.map(p=>({path:p.key,filePath:p.path,wiki:p.wiki,wikiLabel:core.scopes.get(p.wiki).label,label:p.head.title||p.path.split('/').at(-1).replace(/\.md$/,'' )})),edges:graphProjection(core).edges.filter(e=>e.valid).map(e=>({...e,crossWiki:core.pages.get(e.source).wiki!==core.pages.get(e.target).wiki})),unresolved:core.findings.length+core.failures.length};
+  return {core,nodes:graphProjection(core).pages.map(p=>({path:p.key,filePath:p.path,wiki:p.wiki,wikiLabel:core.scopes.get(p.wiki).label,label:p.head.title||p.path.split('/').at(-1).replace(/\.md$/,'' ),...(p.replicas?{replicas:p.replicas}:{}),...(p.replica?{replica:{owner:p.replica.owner,document:p.replica.document,target:p.replica.target}}:{}),...(p.replica_pending?{replica_pending:true}:{})})),edges:graphProjection(core).edges.filter(e=>e.valid).map(e=>({...e,crossWiki:core.pages.get(e.source).wiki!==core.pages.get(e.target).wiki})),unresolved:core.findings.length+core.failures.length};
 }
 export function resolve(view,wiki,page,written){if(!view.core)return null;const result=resolvePage(view.core,{wiki,path:page},written);return result.key?view.core.pages.get(result.key):null;}
 export {pageKey};
+export {replicaIdentity,validateHandover,validateRekey} from './core/contribution-identity.mjs';
 
 // The browser keeps its UI review/draft state; document validation and derived
 // navigation use the same functions as the agent's write action.
@@ -23,7 +24,7 @@ export async function saveNote(dir,page,expected,text,author,files,reviews,{upda
  return result;
 }
 export async function updateIndex(dir,files,reviews){const store=browserStore(dir,files,reviews);return await store.read('wiki/index.md')?refreshIndex(store):{updated:false,needs_setup:true};}
-export {parseDocument,patchHead,projectMetadata} from './core/document.mjs';
+export {parseDocument,patchHead,projectMetadata,statementText,compareForm,transferForm,compose,composeHome,setContributionTargets} from './core/document.mjs';
 export {markdownLink} from './derived.mjs';
 
 export {planMoves,applyMoves,makeFolder} from './file-management.mjs';

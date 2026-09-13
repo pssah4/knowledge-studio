@@ -113,10 +113,10 @@ export async function readiness(wikis){
     if(!purpose||/Noch nicht geschrieben|Not yet written/i.test(purpose))findings.push({code:'bundle_purpose_missing',wiki:scope.id});
     if(!index)findings.push({code:'directory_missing',wiki:scope.id});
     for(const page of graph.pages.values())if(page.wiki===scope.id){
-      findings.push(...noteContract(page,scope.register).map(f=>({...f,wiki:scope.id,page:page.path})));
+      if(!page.replica&&!page.replica_pending)findings.push(...noteContract(page,scope.register).map(f=>({...f,wiki:scope.id,page:page.path})));
       advisories.push(...reviewAdvisories(page,scope.register,scope.store.services.now()).map(f=>({...f,wiki:scope.id,page:page.path})));
       const issue=code=>findings.push({code,wiki:scope.id,page:page.path});
-      if(!page.head.title||!page.head.description||!scope.register?.genera.has(page.head.type))issue('metadata_missing');
+      if(!page.head.title||!page.head.description||!page.replica&&!page.replica_pending&&!scope.register?.genera.has(page.head.type))issue('metadata_missing');
       if(!page.head.id)issue('identity_missing');
       if(!page.head.generated?.by||!Number.isFinite(Date.parse(page.head.generated?.at)))issue('generated_missing');
       if(String(page.head.description??'').trim().split(/\s+/).length>25)issue('description_too_long');
@@ -142,5 +142,5 @@ export async function readiness(wikis){
       for(const id of listValue(page.head.sources))if(!resolveEvidence(graph,id,page.wiki))issue('evidence_unresolved');
     }
   }
-  return {ready:!findings.length,findings,advisories,pages:graph.pages.size,source_pages};
+  return {ready:!findings.some(f=>f.code!=='link_outside_circle'),findings,advisories,pages:graph.pages.size,source_pages};
 }

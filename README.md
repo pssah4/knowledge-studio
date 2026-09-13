@@ -1,4 +1,4 @@
-# Knowledge Studio · 0.4.24
+# Knowledge Studio · 0.4.26
 
 Knowledge Studio combines an AI-maintained Markdown wiki with graph retrieval,
 retained quotations and an editor for reviewing sources and shared changes.
@@ -217,6 +217,28 @@ wording. Record your own interpretation separately from that excerpt.
 For operation names such as `shadow.refresh`, `shadow.pin`, `shadow.status` and
 `shadow.rebuild`, see the [operation reference](platforms/operations.md).
 
+## Share selected documents
+
+You can contribute individual documents from a personal or team home to selected
+wikis while keeping the rest of the home private. In Properties, choose a target
+and review the complete content, links, attachments, discussion and destination.
+Confirm that preview, then synchronize. A folder preview can approve several files
+at once. It shows target markings separately for files held by name collisions.
+Additional linked pages need a new preview; unselected links stay citations. Later
+changes need a new approval, including names added to replica notices.
+
+Each replica retains the same document ID and names its caretaker and other approved
+targets. Propose changes through Versions and changes; the home decides whether a
+target's changes may continue to other targets. Normal editing of replicas is
+read-only. A contribution can be retired, handed over or forked through a reviewed
+lifecycle action. Copies already read and cloud version history cannot be recalled.
+
+Setup requires confirmed reader circles, pinned bundle identities and a successful
+hidden-folder transport check between two devices. See the
+[contribution operations](platforms/operations.md#contributions-from-a-personal-or-team-home)
+for setup, exact approval and recovery steps. This is asynchronous file exchange;
+it does not grant cloud permissions or provide live co-editing.
+
 ## Share a wiki and review changes
 
 Share the wiki folder through your storage provider. Each person connects it in
@@ -226,7 +248,8 @@ storage provider; an audience label in the wiki grants no permissions.
 
 Run Maintain before and after work, or keep the browser editor open for its
 synchronization. A saved working file that still matches the synchronization
-baseline receives the changed shared file automatically. The change inbox and
+baseline receives a journal-covered shared file automatically. An uncovered remote
+edit is recorded for an explicit decision. The change inbox and
 document banner show differences from your personal saved or accepted baseline;
 receiving a file does not acknowledge those differences. A first observation
 establishes a baseline rather than presenting all earlier saves as unread changes.
@@ -272,7 +295,7 @@ npm run build
 ```
 
 The build creates both skills for five platforms, the Claude Code plugin and
-[release checksums](dist/public/release-0.4.24.json). Generated downloads are available in this repository and on its release page; a source checkout can rebuild them from the pinned lockfile.
+[release checksums](dist/public/release-0.4.26.json). Generated downloads are available in this repository and on its release page; a source checkout can rebuild them from the pinned lockfile.
 
 The public repository contains product sources and build tooling. Automated runtime,
 browser and acceptance fixtures live in the private development repository and are

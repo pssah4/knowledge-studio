@@ -1,11 +1,13 @@
 /** Derived, scoped knowledge graph (ADR-03/13/21/26). Files carry all authoritative facts. */
-import {stripNavigation,parseDocument,bodyLinks,relationRows,listValue} from './document.mjs';
+import {stripNavigation,parseDocument,bodyLinks,relationRows,listValue,compareForm} from './document.mjs';
 import {readRegister,edgeAllowed} from './ontology.mjs';
 import {requireThat} from './errors.mjs';
+import {replicaIdentity,validateHandover,validateRekey} from './contribution-identity.mjs';
+import {handle,reviews} from '../review.mjs';
 
 export const navigationPage=path=>['WIKI.md','index.md','bundle.md','wiki/index.md','wiki/bundle.md'].includes(path);
 /** Retain navigation in the resolver, exclude it from visual/exported knowledge. */
-export function graphProjection(graph){const pages=[...graph.pages.values()].filter(p=>!navigationPage(p.path)),keys=new Set(pages.map(p=>p.key));return {pages,edges:graph.edges.filter(e=>keys.has(e.source)&&keys.has(e.target))};}
+export function graphProjection(graph){const pages=[...graph.pages.values()].filter(p=>!navigationPage(p.path)&&(!p.canonical||p.canonical===p.key)),keys=new Set(pages.map(p=>p.key));return {pages,edges:graph.edges.filter(e=>keys.has(e.source)&&keys.has(e.target))};}
 
 export const pageKey=(wiki,page)=>JSON.stringify([wiki,page]);
 const technical=path=>path.split('/').some(p=>p.startsWith('.')||p.startsWith('~$'))||/^(schema|meta|notices|vermerke)\//.test(path);
@@ -48,6 +50,15 @@ export function resolvePage(graph,from,written){
   return choose(graph.names.get(text.replace(/\.md$/,''))??[]);
 }
 
+async function contributionSourceHints(store){
+ const found=new Set();if(!store.services)return found;let entries=[];
+ try{entries=await store.list('.llmwiki/contributions/from',{hidden:true});}catch(error){if(error.code!=='ENOENT'&&error.name!=='NotFoundError')throw error;}
+ for(const entry of entries.filter(e=>e.kind==='file'&&e.path.endsWith('.json'))){
+  const state=JSON.parse((await store.read(entry.path)).text),id=state?.document;
+  if(state?.format==='llmwiki-contribution-state/1'&&typeof id==='string'&&typeof state.owner==='string'&&typeof state.target==='string'&&state.owner!==state.target&&typeof state.root==='string'&&entry.path==='.llmwiki/contributions/from/'+encodeURIComponent(state.owner)+'/'+encodeURIComponent(id)+'.json')found.add(id);
+ }return found;
+}
+
 export async function buildGraph(wikis,{allowMissingRegister=false}={}){
   requireThat(Array.isArray(wikis)&&wikis.length>0&&new Set(wikis.map(w=>w.id)).size===wikis.length,'scope','Select unique accessible wikis.');
   const graph={pages:new Map(),scopes:new Map(),names:new Map(),projectPaths:new Map(),evidence:new Map(),edges:[],findings:[],failures:[],redirects:[]};
@@ -57,12 +68,30 @@ export async function buildGraph(wikis,{allowMissingRegister=false}={}){
       const register=await wiki.store.read('schema/TYPES.md');
       if(!register&&allowMissingRegister)graph.failures.push({wiki:wiki.id,code:'ontology',message:'Wiki has no type register; typed relations cannot be validated.'});
       else {requireThat(register,'ontology','Wiki has no type register.');scope.register=readRegister(register.text);}
+      const sourceHints=await contributionSourceHints(wiki.store);
       for(const entry of await wiki.store.list('')){
         if(entry.kind!=='file'||!entry.path.endsWith('.md')||technical(entry.path))continue;
         try{
           const file=await wiki.store.read(entry.path), parsed=parseDocument(file.text);
           if(parsed.head.llmwiki_redirect){graph.redirects.push({wiki:wiki.id,path:entry.path,target:parsed.head.llmwiki_redirect});continue;}
           const key=pageKey(wiki.id,entry.path),page={...parsed,key,wiki:wiki.id,path:entry.path,sha256:file.sha256};
+          // The document-only browser projection can supply journal events; real
+          // stores always use the same receipt and path-alias reader as sync.
+          const journal=file.events?{events:file.events,pending:[]}:wiki.store.services?await reviews.read(handle(wiki.store),entry.path):{events:[],pending:[]};
+          const events=journal.events.filter(e=>e.source?.document===String(page.head.id??'')||e.kind!=='contribution_root'),handovers=[];
+          if(page.head.id&&wiki.store.services){
+           const folder='.llmwiki/contributions/handover/'+encodeURIComponent(page.head.id);let acts=[];
+           try{acts=await wiki.store.list(folder,{recursive:false,hidden:true});}catch(error){if(error.code!=='ENOENT'&&error.name!=='NotFoundError')throw error;}
+           for(const act of acts.filter(a=>a.kind==='file'&&a.path.endsWith('.json')))try{const record=JSON.parse((await wiki.store.read(act.path)).text);if(record.document===String(page.head.id)&&act.path===folder+'/'+record.id+'.json'&&validateHandover(record,events))handovers.push(record);}catch(error){graph.findings.push({code:'handover_invalid',wiki:wiki.id,page:entry.path,message:error.message});}
+          }
+          const rekeys=[];if(wiki.store.services){const bundleEvents=(await reviews.read(handle(wiki.store),'wiki/bundle.md')).events;let entries=[];try{entries=await wiki.store.list('.llmwiki/contributions/rekey',{recursive:false,hidden:true});}catch(error){if(error.code!=='ENOENT'&&error.name!=='NotFoundError')throw error;}
+           for(const entry of entries.filter(v=>v.kind==='file'&&v.path.endsWith('.json'))){const trace=JSON.parse((await wiki.store.read(entry.path)).text);if(validateRekey(trace,bundleEvents))rekeys.push({trace,events:bundleEvents});}
+          }
+          const identity=replicaIdentity(events,{handovers,rekeys});
+          if(handovers.length&&!identity)page.handover=handovers[0];
+          if(identity?.conflict){page.replica_conflict=true;graph.findings.push({code:'owner_conflict',wiki:wiki.id,page:entry.path});}
+          else if(identity){page.replica=identity;page.replica_covered=events.some(e=>e.norm===1&&['contribution_root','change','accept'].includes(e.kind)&&compareForm(e.text)===compareForm(file.text));}
+          else if(!page.handover&&(page.head.shared_copy&&!page.head.shared_copy.until||journal.pending.some(e=>e.kind==='contribution_root')||sourceHints.has(String(page.head.id??'')))){page.replica_pending=true;graph.findings.push({code:'replica_pending',reason:'replica_root_missing',wiki:wiki.id,page:entry.path});}
           graph.pages.set(key,page);scope.paths.set(entry.path,key);
           const name=entry.path.split('/').pop().slice(0,-3);add(scope.names,name,key);add(graph.names,name,key);
           const id=String(page.head.id??'').trim();if(id)add(scope.ids,id,key);
@@ -80,11 +109,12 @@ export async function buildGraph(wikis,{allowMissingRegister=false}={}){
       }
     }catch(error){graph.findings.push({wiki:scope.id,code:'identity_alias_invalid',message:error.message});}
   }
+  canonicalizeReplicas(graph);
   for(const r of graph.redirects){const target=graph.scopes.get(r.target.wiki),keys=target?.ids.get(r.target.id)??[],key=keys.length===1?keys[0]:null,page=graph.pages.get(key);if(!page)continue;const origin=graph.scopes.get(r.wiki);origin.paths.set(r.path,key);if(!origin.ids.has(r.target.id))origin.ids.set(r.target.id,[key]);const name=r.path.split('/').at(-1).replace(/\.md$/,'');if(!origin.names.has(name))origin.names.set(name,[key]);if(origin.path!=null)add(graph.projectPaths,origin.path+'/'+r.path,key);}
   for(const [id,keys] of graph.evidence)if(keys.length>1)graph.findings.push({code:'duplicate_id',id,pages:keys});
   const seen=new Set();
   for(const page of graph.pages.values()){
-    if(navigationPage(page.path))continue;
+    if(navigationPage(page.path)||page.canonical&&page.canonical!==page.key)continue;
     const authored=stripNavigation(page.head.resource?page.body.replace(/<!-- llmwiki:source:start -->[\s\S]*?<!-- llmwiki:source:end -->/g,''):page.body);
     const rows=relationRows(authored),typed=new Set(rows.filter(r=>r.direction==='out').map(r=>r.written.split('#')[0]));
     const candidates=[...rows.filter(r=>r.direction==='out').map(r=>({...r,origin:'table'})),
@@ -95,7 +125,7 @@ export async function buildGraph(wikis,{allowMissingRegister=false}={}){
       if(edge.embedded&&/\.(?:png|jpe?g|gif|webp|avif|pdf|excalidraw)(?:#.*)?$/i.test(edge.written))continue;
       if(edge.origin!=='table'&&!edge.type&&typed.has(edge.written.split('#')[0]))continue;
       const resolved=resolvePage(graph,page,edge.written);
-      if(!resolved.key){if(!['external_link','technical_link'].includes(resolved.code))graph.findings.push({code:resolved.code,wiki:page.wiki,page:page.path,written:edge.written});continue;}
+      if(!resolved.key){if(!['external_link','technical_link'].includes(resolved.code))graph.findings.push({code:page.replica_covered&&resolved.code==='unresolved_link'?'link_outside_circle':resolved.code,wiki:page.wiki,page:page.path,written:edge.written});continue;}
       const target=graph.pages.get(resolved.key);if(navigationPage(target.path))continue;let valid=true;
       if(edge.type){
         try{valid=edge.valid!==false&&Boolean(edge.reason.trim())&&edgeAllowed(graph.scopes.get(page.wiki).register,edge.type,page.head.type,target.head.type);}
@@ -120,6 +150,27 @@ export async function buildGraph(wikis,{allowMissingRegister=false}={}){
     if(cycle)graph.findings.push({code:'relation_cycle',type:edge.type,source:edge.source,target:edge.target});
   }
   return graph;
+}
+
+function canonicalizeReplicas(graph){
+ const groups=new Map(),mapping=new Map();for(const page of graph.pages.values()){const id=String(page.head.id??'');if(id)add(groups,id,page);}
+ const ref=page=>({key:page.key,wiki:page.wiki,path:page.path,sha256:page.sha256});
+ for(const [id,pages]of groups){
+  if(pages.length<2)continue;
+  const replicas=pages.filter(p=>p.replica),homes=pages.filter(p=>!p.replica&&!p.replica_pending&&!p.replica_conflict);
+  if(replicas.length===0||homes.length>1||pages.some(p=>p.replica_pending||p.replica_conflict)||new Set(replicas.map(p=>p.replica.owner)).size!==1)continue;
+  // Repeated copies in one wiki are still an identity collision.
+  if(new Set(pages.map(p=>p.wiki)).size!==pages.length)continue;
+  const home=homes[0];
+  if(home&&!replicas.every(p=>listValue(home.head.contribute_to).includes(p.replica.target)||graph.pages.get(graph.scopes.get(home.wiki).paths.get('wiki/bundle.md'))?.head.id===p.replica.owner))continue;
+  const canonical=home??replicas.slice().sort((a,b)=>a.key.localeCompare(b.key))[0];
+  canonical.replicas=pages.filter(p=>p!==canonical).map(ref);
+  for(const page of pages){page.canonical=canonical.key;mapping.set(page.key,canonical.key);}
+  if(pages.some(p=>compareForm(p.source)!==compareForm(canonical.source)))graph.findings.push({code:'replica_pending',id,replicas:pages.map(ref)});
+ }
+ const arrayMap=map=>{for(const [key,values]of map)map.set(key,[...new Set(values.map(value=>mapping.get(value)??value))]);};
+ for(const scope of graph.scopes.values()){for(const [path,key]of scope.paths)scope.paths.set(path,mapping.get(key)??key);arrayMap(scope.names);arrayMap(scope.ids);}
+ arrayMap(graph.names);arrayMap(graph.projectPaths);arrayMap(graph.evidence);
 }
 
 export function resolveEvidence(graph,identifier,wiki){

@@ -10,7 +10,9 @@ export function validateLocations(root,project,bindings){
  const clean=value=>typeof value==='string'?value.replace(/\\/g,'/').replace(/\/+$/,''):null;
  const location=f=>f.path===null?clean(bindings[f.id]?.root):clean(f.path==='.'?root.root:[root.root,f.path].filter(Boolean).join('/'));
  const overlaps=(a,b)=>a!==null&&b!==null&&(a===b||a===''||b===''||a.startsWith(b+'/')||b.startsWith(a+'/'));
+ const fullWorks=[];
  for(const c of project.connections){const folder=id=>project.folders.find(f=>f.id===id),wiki=folder(c.wiki),works=c.works.map(folder);
+  if((c.scope??'full')==='full')for(const work of works){const path=location(work);requireThat(path===null||!fullWorks.some(prior=>overlaps(path,prior)),'work_full_collision','The same physical working folder has multiple full synchronization connections.',{connection:c.id,work:work.id});if(path!==null)fullWorks.push(path);}
   for(const work of works)requireThat(!overlaps(location(wiki),location(work)),'binding_overlap','Wiki storage and working copy must be separate directories.',{wiki:wiki.id,work:work.id});
   for(const source of c.sources.map(folder))for(const target of [wiki,...works])requireThat(!overlaps(location(source),location(target)),'binding_overlap','The source binding points inside a wiki/working copy or contains it. Bind the actual original source directory.',{source:source.id,target:target.id});
  }
@@ -64,7 +66,7 @@ export async function inspect(root,{editorHTML=null,bindings={}}={}){const file=
  const location=entryLocation(root),bindingChanged=JSON.stringify(embeddedJSON(entry?.text,'llmwiki-editor-design'))!==JSON.stringify(embeddedJSON(editorHTML,'llmwiki-editor-design'))||JSON.stringify(embeddedJSON(entry?.text,'llmwiki-entry-binding-locations'))!==JSON.stringify(bindingLocations)||JSON.stringify(embeddedJSON(entry?.text,'llmwiki-entry-location'))!==JSON.stringify(location)||JSON.stringify(embeddedJSON(entry?.text,'llmwiki-entry-settings'))!==JSON.stringify(project);
  const editor={exists:Boolean(entry),version,current_version,update_required:Boolean(editorHTML)&&(!entry||version!==current_version||bindingChanged),...location};
  return {next:issues.length?'repair_setup':'choose_task',project,sha256:file.sha256,issues,locations,editor};}
- const draft=await root.read('.llmwiki/setup.json'),starter=await root.read('LLM-Wiki.html');return {project_root:entryLocation(root).project_root,project_hint:embeddedJSON(starter?.text,'llmwiki-entry-location')?.project_root??null,next:'setup',draft:draft?JSON.parse(draft.text).answers:{},draft_sha256:draft?.sha256??null,folders:(await root.list('',{recursive:false})).filter(e=>e.kind==='directory').map(e=>e.path),questions:['editor','wikis','sources','author'],setup_contract:setupContract(draft?.sha256??null)};}
+ const draft=await root.read('.llmwiki/setup.json'),starter=await root.read('LLM-Wiki.html');return {project_root:entryLocation(root).project_root,project_hint:embeddedJSON(starter?.text,'llmwiki-entry-location')?.project_root??null,next:'setup',draft:draft?JSON.parse(draft.text).answers:{},draft_sha256:draft?.sha256??null,folders:(await root.list('',{recursive:false})).filter(e=>e.kind==='directory').map(e=>e.path),questions:['editor','readers','wikis','sources','author'],setup_contract:setupContract(draft?.sha256??null)};}
 export async function setupDraft(root,answers,expected){
  validateSetupAnswers(answers);
  const file=await root.read('.llmwiki/setup.json');requireThat((file?.sha256??null)===expected,'stale','Setup answers changed. Read inspect and merge the saved answers before retrying.',{draft_sha256:file?.sha256??null,next_request:{action:'inspect'}});
@@ -72,6 +74,7 @@ export async function setupDraft(root,answers,expected){
 }
 export async function load(root){const file=await root.read(NAME);requireThat(file,'setup','Start guided setup before selecting a task.');return {project:projectSettings.validate(JSON.parse(file.text)),file};}
 export async function saveSettings(root,data,expected,{editorHTML=null,bindings={}}={}){
+ data={...data,format:projectSettings.FORMAT};
  projectSettings.validate(data);validateLocations(root,data,bindings);const seen=await root.read(NAME);requireThat((seen?.sha256??null)===expected,'stale','Project settings changed.');
  await root.write(NAME,JSON.stringify(data,null,2)+'\n',{expected});const verified=await load(root);
  if(editorHTML)await installEditor(root,data,editorHTML,{bindings});return {project:verified.project,sha256:verified.file.sha256,settings_verified:true};
@@ -80,31 +83,61 @@ export async function folderStore(root,folder,{bindings={},writable=folder.writa
   if(folder.path===null){requireThat(bindings[folder.id],'binding','Connect this device to the selected folder.',{folder:folder.id});return bindings[folder.id].substore('',{writable:writable&&folder.kind!=='source'});}
   return root.substore(folder.path,{writable:writable&&folder.kind!=='source'});
 }
+const sameReaders=(a,b)=>JSON.stringify([...new Set(a??[])].sort())===JSON.stringify([...new Set(b??[])].sort());
+async function bundleInfo(store,{required=false}={}){
+ const file=await store.read('wiki/bundle.md');
+ requireThat(file||!required,'bundle','A contribution home and target both need an existing bundle page.');
+ if(!file)return null;
+ let head;try{head=parseDocument(file.text).head;}catch(error){if(required)throw error;return null;}
+ const valid=typeof head.id==='string'&&head.id.trim()&&Array.isArray(head.readers)&&head.readers.length&&head.readers.every(reader=>typeof reader==='string'&&reader.trim());
+ requireThat(valid||!required,'bundle','The bundle page needs an identity and a reader circle.');if(!valid)return null;
+ return {bundle_id:head.id,readers:head.readers,title:head.title??head.id};
+}
 export async function configure(root,request,{bindings={},editorHTML=null}={}){
   nonempty(request.author,'author');requireThat(Array.isArray(request.wikis)&&request.wikis.length,'wiki','Select at least one wiki.');
   const existing=await root.read(NAME);requireThat((existing?.sha256??null)===(request.expected??null),'stale','Project settings changed; reload their exact baseline.');
   requireThat(request.fresh===undefined||typeof request.fresh==='boolean','setup','fresh must be a boolean.');
   const previous=existing?projectSettings.validate(JSON.parse(existing.text)):null;
   const newInstance=!existing||request.fresh?root.services.uuid():null;
-  const project={format:'llmwiki-project/1',id:request.id,label:request.label,editor:request.editor??'builtin',folders:[],connections:[]};
-  for(const w of request.wikis){nonempty(w.purpose,'purpose');requireThat(Array.isArray(w.audience)&&w.audience.length,'audience','Name the reader circle.');
-    const previousWork=previous?.folders.find(f=>f.id===previous.connections.find(c=>c.wiki===w.id)?.works[0]);
-    const workId=previousWork?.id??'work-'+w.id,workPath=Object.hasOwn(w,'workPath')?w.workPath:request.fresh?'.llmwiki/working/'+newInstance+'/'+w.id:previousWork?previousWork.path:'.llmwiki/working/'+w.id;
-    requireThat(!previousWork||request.fresh||workPath===previousWork.path,'relocation','Use workspace.relocate to preserve an existing working copy when changing its directory.');
+  const project={format:projectSettings.FORMAT,id:request.id,label:request.label,editor:request.editor??'builtin',...(request.readers??previous?.readers?{readers:request.readers??previous.readers}:{}),folders:[],connections:[]},jobs=[],workReaderAnswers=new Map();
+  for(const w of request.wikis){
+    nonempty(w.purpose,'purpose');requireThat(Array.isArray(w.audience)&&w.audience.length,'audience','Name the reader circle.');
+    const prior=previous?.connections.find(c=>c.id===w.id),scope=w.scope??prior?.scope??'full';
+    requireThat(['full','contributions','participation'].includes(scope),'connection_scope','Choose full synchronization, contributions or participation.');
+    const previousWork=previous?.folders.find(f=>f.id===prior?.works[0]);
+    const reused=w.work?(project.folders.find(f=>f.id===w.work&&f.kind==='work')??previous?.folders.find(f=>f.id===w.work&&f.kind==='work')):null;
+    requireThat(!w.work||reused,'work','Choose an existing working folder for this connection.');
+    requireThat(scope!=='contributions'||reused||previousWork,'work','Contributions reuse the existing working folder of their home bundle.');
+    const knownWork=reused??previousWork,workId=knownWork?.id??'work-'+w.id;
+    const workPath=Object.hasOwn(w,'workPath')?w.workPath:request.fresh&&!reused?'.llmwiki/working/'+newInstance+'/'+w.id:knownWork?knownWork.path:'.llmwiki/working/'+w.id;
+    requireThat(!knownWork||request.fresh&&!reused||workPath===knownWork.path,'relocation','Use workspace.relocate to preserve an existing working copy when changing its directory.');
     requireThat(w.path!=='.'&&(w.path===null||w.path!==workPath),'wiki','Choose a separate wiki directory within or connected to the project.');
-    project.folders.push({id:w.id,label:w.label,kind:'wiki',...(w.icon?{icon:w.icon}:{}),path:w.path,writable:w.writable!==false,readers:w.audience,writers:w.writable===false?[]:[request.author]},
-      {id:workId,label:w.label,kind:'work',path:workPath,writable:true,readers:[request.author],writers:[request.author]});
+    const wiki={id:w.id,label:w.label,kind:'wiki',...(w.icon?{icon:w.icon}:{}),path:w.path,writable:w.writable!==false,readers:w.audience,writers:w.writable===false?[]:[request.author]};
+    let work=project.folders.find(f=>f.id===workId);
+    if(!work){
+      work={id:workId,label:knownWork?.label??w.label,kind:'work',path:workPath,writable:true,readers:w.workReaders??(workPath!==null?project.readers??[request.author]:knownWork?.readers??[request.author]),writers:[request.author],readers_confirmed:w.workReaders!==undefined||knownWork?.readers_confirmed===true};
+      project.folders.push(work);
+    }
+    if(w.workReaders!==undefined){requireThat(!workReaderAnswers.has(workId)||sameReaders(workReaderAnswers.get(workId),w.workReaders),'work_readers','One working folder cannot have two reader declarations.');workReaderAnswers.set(workId,w.workReaders);work.readers=w.workReaders;work.readers_confirmed=true;}
+    project.folders.push(wiki);
     const sources=(request.sources??[]).filter(s=>s.wikis.includes(w.id)).map(s=>s.id);
-    project.connections.push({id:w.id,label:w.label,wiki:w.id,works:[workId],sources,default_source:Object.hasOwn(w,'default_source')?w.default_source:(sources.length===1?sources[0]:null),mode:w.shared?'gemeinsam':'eigen'});
+    const connection={id:w.id,label:w.label,wiki:w.id,works:[workId],sources,default_source:Object.hasOwn(w,'default_source')?w.default_source:(sources.length===1?sources[0]:null),mode:w.shared?'gemeinsam':'eigen',scope,...(w.comments!==undefined||prior?.comments!==undefined||scope==='contributions'?{comments:w.comments??prior?.comments??false}:{})};
+    if(scope==='participation')connection.participation=w.participation??prior?.participation;
+    if(scope!=='full'){
+      const target=await folderStore(root,wiki,{bindings,writable:false}),info=await bundleInfo(target,{required:true});
+      requireThat(!prior?.bundle_id||prior.bundle_id===info.bundle_id,'bundle_id_changed','The target bundle identity changed. Use contribution rekey before continuing.');
+      requireThat(sameReaders(w.audience,info.readers),'audience_changed','Confirm the reader circle currently declared by the target bundle.');
+      Object.assign(connection,{bundle_id:info.bundle_id,readers:info.readers});
+    }
+    project.connections.push(connection);jobs.push({w,wiki,work,connection});
   }
   for(const s of request.sources??[])project.folders.push({id:s.id,label:s.label,kind:'source',...(s.icon?{icon:s.icon}:{}),path:s.path,writable:s.writable===true,readers:[request.author],writers:s.writable===true?[request.author]:[]});
   projectSettings.validate(project);
   validateLocations(root,project,bindings);
   // Validate access and user answers before creating any bundle files.
   for(const f of project.folders){if(f.path===null)requireThat(bindings[f.id],'binding','External folder permission is missing.',{folder:f.id});else if(f.kind==='source')await root.substore(f.path,{writable:false});}
-  if(request.fresh)for(const w of request.wikis.filter(w=>Object.hasOwn(w,'workPath'))){const work=project.folders.find(f=>f.id===project.connections.find(c=>c.wiki===w.id).works[0]),store=await folderStore(root,work,{bindings});let entries;try{entries=await store.list('',{hidden:true});}catch(error){if(error.code!=='ENOENT')throw error;entries=[];}requireThat(!entries.length,'reset','A fresh setup needs an empty explicitly selected working directory; existing content is preserved.',{work:work.id});}
-  for(const w of request.wikis){
-    const wiki=project.folders.find(f=>f.id===w.id),work=project.folders.find(f=>f.id===project.connections.find(c=>c.wiki===w.id).works[0]);
+  if(request.fresh)for(const {w,work,connection}of jobs.filter(job=>job.connection.scope==='full'&&Object.hasOwn(job.w,'workPath'))){const store=await folderStore(root,work,{bindings});let entries;try{entries=await store.list('',{hidden:true});}catch(error){if(error.code!=='ENOENT')throw error;entries=[];}requireThat(!entries.length,'reset','A fresh setup needs an empty explicitly selected working directory; existing content is preserved.',{work:work.id});}
+  for(const {w,wiki,work,connection}of jobs.filter(job=>job.connection.scope==='full')){
     if(wiki.path!==null)await root.mkdir(wiki.path);if(work.path!==null)await root.mkdir(work.path);
     const remote=await folderStore(root,wiki,{bindings}),local=await folderStore(root,work,{bindings});
     const options={work:handle(local),remote:handle(remote),identity:syncIdentity(project,wiki,work)};
@@ -113,21 +146,38 @@ export async function configure(root,request,{bindings={},editorHTML=null}={}){
       await createBundle(local,{title:w.label,purpose:w.purpose,audience:w.audience,author:request.author,language:request.language??'de'});
       const published=await sync.run({...options,canPublish:true});requireThat(!published.conflicts.length&&!published.pending,'sync','Setup content could not be synchronized.',published);
     }else requireThat(await local.read('wiki/bundle.md'),'bundle','Read-only wiki has no bundle.');
+    const info=await bundleInfo(remote,{required:true});Object.assign(connection,{bundle_id:info.bundle_id,readers:info.readers});
   }
+  // Scoped connections are declarations. The normal sync owns their selection;
+  // setup must never turn a contribution into a full subscription or release.
+  for(const {work,connection}of jobs.filter(job=>job.connection.scope!=='full')){
+    if(work.path!==null)await root.mkdir(work.path);
+    if(connection.scope==='contributions')await bundleInfo(await folderStore(root,work,{bindings}),{required:true});
+  }
+  projectSettings.validate(project);
   await root.write(NAME,JSON.stringify(project,null,2)+'\n',{expected:existing?.sha256??null});
   const verified=await load(root);requireThat(JSON.stringify(verified.project)===JSON.stringify(project),'settings','Settings readback failed.');
   await ensureInstance(root,project,{instance:newInstance,origin:request.fresh?'reset':existing?'upgrade':'setup'});
   if(editorHTML)await installEditor(root,project,editorHTML,{bindings});
   return {project,sha256:verified.file.sha256,entry:editorHTML?'LLM-Wiki.html':null};
 }
-export function syncIdentity(project,wiki,work){return JSON.stringify([project.id,wiki.id,wiki.path,work.id,work.path]);}
-export async function context(root,connection,{bindings={},work:workID}={}){
+export function syncIdentity(project,wiki,work,connection){return projectSettings.syncIdentity(project,wiki,work,connection);}
+export async function context(root,connection,{bindings={},work:workID,verifyTarget=true}={}){
   const {project}=await load(root),active=await workspaceState(root);connection??=active?.connection??(project.connections.length===1?project.connections[0].id:null);const c=project.connections.find(c=>c.id===connection);requireThat(c,'connection','Select a connected wiki.');
   const folder=id=>project.folders.find(f=>f.id===id),wiki=folder(c.wiki),work=folder(workID??(active?.connection===c.id?active.work:null)??(c.works.length===1?c.works[0]:null));
-  validateLocations(root,{...project,connections:[c]},bindings);
+  validateLocations(root,project,bindings);
   requireThat(work&&c.works.includes(work.id),'work','Working folder is not assigned to this wiki.');
   const sources=[];for(const id of c.sources){const f=folder(id);try{sources.push({...f,store:await folderStore(root,f,{bindings,writable:false})});}catch(error){sources.push({...f,store:null,error:{code:error.code,message:error.message}});}}
-  return {project,connection:c,wiki,workFolder:work,work:await folderStore(root,work,{bindings}),remote:await folderStore(root,wiki,{bindings}),sources,identity:syncIdentity(project,wiki,work),canPublish:wiki.writable};
+  const local=await folderStore(root,work,{bindings}),remote=await folderStore(root,wiki,{bindings}),scope=c.scope??'full';
+  const target=await bundleInfo(remote,{required:scope==='contributions'}),home=await bundleInfo(local,{required:scope==='contributions'});
+  if(verifyTarget){
+    requireThat(!c.bundle_id||target?.bundle_id===c.bundle_id,'bundle_id_changed','The connected target bundle identity changed. Review the connection before continuing.',{connection:c.id});
+    requireThat(!c.readers||sameReaders(target?.readers,c.readers),'audience_changed','The connected target reader circle changed. Confirm the current reader circle before continuing.',{connection:c.id});
+  }
+  const full=project.connections.find(candidate=>(candidate.scope??'full')==='full'&&candidate.works.includes(work.id)),ownerFolder=full?folder(full.wiki):null;
+  const ownerWiki=ownerFolder?await folderStore(root,ownerFolder,{bindings,writable:false}):null;
+  const contributionMeta=projectSettings.connectionMeta(project,c,work,{target,home,ownerWiki,sources});
+  return {project,connection:c,wiki,workFolder:work,work:local,remote,sources,identity:syncIdentity(project,wiki,work,c),canPublish:wiki.writable&&scope!=='participation',syncOptions:{scope,contributionMeta,...(scope==='participation'?{participation:c.participation}:{})}};
 }
 export async function detach(root,id,expected,{editorHTML=null,bindings={}}={}){
   const {project,file}=await load(root);requireThat(file.sha256===expected,'stale','Project settings changed.');

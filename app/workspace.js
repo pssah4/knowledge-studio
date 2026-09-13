@@ -142,7 +142,7 @@ function button(text, action, symbol, cls) { const n=el("button",cls||"",symbol?
 function report(error) {const text=global.I18n.fromError(error);status(text);const dialog=global.document.querySelector('dialog[open]');if(dialog){let output=dialog.querySelector('.ws-action-error');if(!output){output=el('p','ws-action-error ws-muted');output.setAttribute('role','alert');dialog.append(output);}global.I18n.setText(output,text);}}
 function status(text) { for(const id of ["ws-status","ws-settings-status"]){const n=at(id);if(n){global.I18n.setText(n,text);if(handleCacheFailed){global.I18n.appendText(n,msg(" Browser access could not be remembered. Selected folders remain usable in this window; allow access again after reopening."));}}} }
 function sharedOriginal(data,id){return data.connections.some(c=>c.wiki===id&&c.mode==="gemeinsam");}
-function currentFolder() {const f=state.active&&state.data.folders.find(f=>f.id===state.active.folder);return f&&(state.active.viewer||sharedOriginal(state.data,f.id))?{...f,writable:false}:f;}
+function currentFolder() {const f=state.active&&state.data.folders.find(f=>f.id===state.active.folder);return f&&(state.active.viewer||state.active.replica||sharedOriginal(state.data,f.id))?{...f,writable:false}:f;}
 function workKey(wiki){return "llmwiki.ui.work/"+JSON.stringify([browserProjectKey(),wiki]);}
 function workIds(wiki){return Array.from(new Set(state.data.connections.filter(c=>c.wiki===wiki).flatMap(c=>c.works)));}
 function workingFolder(wiki){
@@ -163,7 +163,7 @@ function selectedIds() {return state.data?state.data.folders.map(f=>f.id):[];}
 function draftKey(tab) {return "workspace/"+[browserProjectKey(),tab.folder,String(tab.folderPath)].map(encodeURIComponent).join("/");}
 function recoveredDraftKey(folder){return 'workspace-recovered/'+[browserProjectKey(),folder.id,String(folder.path)].map(encodeURIComponent).join('/');}
 function collect() {
-  if(!state.active||state.active.viewer||!state.sheet||state.mode==="read")return;
+  if(!state.active||state.active.viewer||state.active.replica||!state.sheet||state.mode==="read")return;
   if(state.mode==="source"&&at("ws-source").value===state.active.text.replace(/\r\n?/g,"\n"))return;
   state.active.text=state.mode==="source"?at("ws-source").value:(state.editorPrefix||'')+state.sheet.value;
 }
@@ -180,7 +180,7 @@ async function preserveDrafts(tabs=state.tabs){
   }
 }
 function changed(text,historyAction) {
-  if(!state.active||state.active.viewer)return;
+  if(!state.active||state.active.viewer||state.active.replica)return;
   const tab=state.active;
   if(state.mode==='live'&&historyAction&&tab.relationshipHistory){const parsed=global.WikiCore.parseDocument(tab.text),step=[...tab.relationshipHistory].reverse().find(r=>historyAction==='undo'?r.after===parsed.body&&r.before===text:r.before===parsed.body&&r.after===text);if(step){const patched=global.WikiCore.patchHead(tab.text,{related:historyAction==='undo'?step.relatedBefore:step.relatedAfter});state.editorPrefix=patched.slice(0,global.WikiCore.parseDocument(patched).offset);}}
 
@@ -435,6 +435,13 @@ async function chooseProject(reselect=false) {
   }catch(error){if(error.name==='AbortError')status(msg('Selection cancelled. Your confirmed folders are kept.'));else throw error;}finally{workspace.inert=false;workspace.removeAttribute("aria-busy");}
 }
 let syncEpoch=0,syncRunning=null;const syncResults=new Map();
+function wikiSyncResult(wiki){
+ const results=(state.data?.connections??[]).filter(c=>c.wiki===wiki).map(connection=>({connection:connection.id,result:syncResults.get(connection.id)})).filter(item=>item.result);
+ if(!results.length)return null;
+ return {error:results.map(item=>item.result.error).filter(Boolean).join('\n'),pending:results.some(item=>item.result.pending),
+  conflicts:results.flatMap(({connection,result})=>(result.conflicts??[]).map(value=>({...value,connection}))),
+  pending_details:results.flatMap(({connection,result})=>(result.pending_details??[]).map(value=>({...value,connection})))};
+}
 async function bindHandles() {
   await restoreActive();
   syncEpoch++;
@@ -511,7 +518,7 @@ function renderTree(revealSelection=false) {
       if(f.kind==="source"&&!state.handles.has(f.id))access.append(button(!state.root&&f.path!==null?msg("Allow folder access"):msg("Connect folder"),()=>reconnect(f.id),null,"ws-reconnect"));
       const work=f.kind==='wiki'&&workingFolder(f.id);
       if(f.kind==='wiki'){
-        const result=syncResults.get(f.id);
+        const result=wikiSyncResult(f.id);
         if(result?.error||result?.pending||result?.conflicts?.length||!state.handles.has(f.id))access.append(button(msg(result?.conflicts?.length?'Resolve differences':result?.error?'Synchronization needs attention':result?.pending?'Changes waiting':'Connect the wiki folder to synchronize.'),()=>syncDetails(f),null,'ws-sync-note'));
       }
       if(work&&!state.handles.has(work))access.append(button(msg("Connect wiki for editing"),()=>connectWiki(f.id),null,"ws-reconnect"));
@@ -523,7 +530,7 @@ function renderTree(revealSelection=false) {
 
         const shown=entries.filter(e=>f.kind==='source'||!e.name.endsWith('/')||!/^(sources|topics|entities|concepts)\//.test(e.name)||entries.some(child=>!child.name.endsWith('/')&&child.name.startsWith(e.name)));
         const nodes=tree(shown.map(e=>e.name));
-        function draw(nodes,parent){for(const n of nodes){if(n.children){const d=el("details","ws-branch"),s=el("summary");retainTreeExpansion(d,f.id+'/'+n.path,n.path==="wiki",revealSelection&&selected&&state.active.name.startsWith(n.path+'/'));s.append(icon("folder"),el("span","ws-tree-label",n.name));if(f.kind==='wiki')s.addEventListener('contextmenu',event=>{event.preventDefault();newFolder(f.id,n.path);});d.append(s);draw(n.children,d);parent.append(d);}else{const b=button(n.name.replace(/\.md$/i,""),()=>f.kind==="wiki"?openWikiFile(f.id,n.path):openFile(f.id,n.path),null,"ws-file");b.replaceChildren(icon("file-text"),el("span","ws-tree-label",n.name.replace(/\.md$/i,"")));b.title=n.path;if(f.kind==='wiki')b.addEventListener('contextmenu',event=>{event.preventDefault();moveDocument(f.id,n.path);});b.classList.toggle("selected",Boolean(state.active&&(state.active.wiki||state.active.folder)===f.id&&state.active.name===n.path));parent.append(b);}}}
+        function draw(nodes,parent){for(const n of nodes){if(n.children){const d=el("details","ws-branch"),s=el("summary");retainTreeExpansion(d,f.id+'/'+n.path,n.path==="wiki",revealSelection&&selected&&state.active.name.startsWith(n.path+'/'));s.append(icon("folder"),el("span","ws-tree-label",n.name));if(f.kind==='wiki'){s.addEventListener('contextmenu',event=>{event.preventDefault();newFolder(f.id,n.path);});if(contributionConnections(workingFolder(f.id)).length){const share=button(msg('Share folder contributions'),()=>shareContribution({tab:null,wiki:f.id,folder:n.path}),'share-2');share.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();});s.append(share);}}d.append(s);draw(n.children,d);parent.append(d);}else{const b=button(n.name.replace(/\.md$/i,""),()=>f.kind==="wiki"?openWikiFile(f.id,n.path):openFile(f.id,n.path),null,"ws-file");b.replaceChildren(icon("file-text"),el("span","ws-tree-label",n.name.replace(/\.md$/i,"")));b.title=n.path;if(f.kind==='wiki')b.addEventListener('contextmenu',event=>{event.preventDefault();moveDocument(f.id,n.path);});b.classList.toggle("selected",Boolean(state.active&&(state.active.wiki||state.active.folder)===f.id&&state.active.name===n.path));parent.append(b);}}}
         draw(nodes,detail);if(!nodes.length&&state.handles.has(work||f.id)&&!folderErrors.has(work||f.id))detail.append(el("p","ws-muted",msg("No files yet")));
       }
       scroll.append(detail);
@@ -544,7 +551,7 @@ function renderTabs() {
   for(const t of state.tabs){const box=el("div","ws-tab"+(t===state.active&&!state.graphOpen?" active":""));box.setAttribute("role","tab");box.setAttribute("aria-selected",String(t===state.active&&!state.graphOpen));const b=button(t.name.split("/").pop().replace(/\.md$/i,"")+(t.text!==t.origin?" *":""),()=>activate(t));b.title=t.name;box.append(b,button(msg("Close tab"),()=>closeTab(t),"close"));root.append(box);}
 }
 async function openFile(folder,name,wiki=null) {
-  collect();const existing=state.tabs.find(t=>t.folder===folder&&t.name===name);if(existing){if(wiki)existing.wiki=wiki;activate(existing);return;}
+  collect();const existing=state.tabs.find(t=>t.folder===folder&&t.name===name);if(existing){if(wiki)existing.wiki=wiki;if(!existing.viewer)existing.replica=await replicaFor(existing.dir,name);activate(existing);return;}
   let dir=state.handles.get(folder);if(!dir){if(!state.root)return requestProjectAccess(()=>openFile(folder,name,wiki));await reconnect(folder);dir=state.handles.get(folder);if(!dir)return;}
   const configured=state.data.folders.find(f=>f.id===folder);
   if(!state.root||configured.kind==="source"||global.SourceViewer.kind(name)!=="text"){
@@ -554,9 +561,9 @@ async function openFile(folder,name,wiki=null) {
   const entry=(state.files.get(folder)||[]).find(e=>e.name===name);if(entry&&entry.size>2000000)throw global.I18n.error(msg("This file exceeds 2 MB. Open it in your local editor."));
   const seen=await F().readFile(dir,name);if(typeof seen.text!=="string")throw global.I18n.error(msg("The file cannot be read."));
   if(!wiki){const owners=state.data.connections.filter(c=>c.works.includes(folder));if(owners.length===1)wiki=owners[0].wiki;}
-  const tab={folder,wiki,name,text:seen.text,origin:seen.text,mark:seen.mark,folderPath:state.data.folders.find(f=>f.id===folder).path,dir};
+  const tab={folder,wiki,name,text:seen.text,origin:seen.text,mark:seen.mark,folderPath:state.data.folders.find(f=>f.id===folder).path,dir,replica:await replicaFor(dir,name,seen.text)};
   const draft=await F().recallDraft(draftKey(tab),name);
-  if(draft&&draft.text!==draft.origin&&typeof draft.text==="string"&&typeof draft.origin==="string"){tab.text=draft.text;tab.origin=draft.origin;}
+  if(!tab.replica&&draft&&draft.text!==draft.origin&&typeof draft.text==="string"&&typeof draft.origin==="string"){tab.text=draft.text;tab.origin=draft.origin;}
   await initializeReview(tab,seen);state.tabs.push(tab);activate(tab);
 }
 function hideSourceViewer(){if(state.sourceView){state.sourceView.destroy();state.sourceView=null;}at("ws-source-viewer").hidden=true;at("workspace-app").classList.remove("ws-viewing-source");}
@@ -569,8 +576,8 @@ function showSourceViewer(tab){
   state.sourceView=global.SourceViewer.mount(at("ws-source-viewer"),{root:state.root,dir:tab.dir,folder:currentFolder(),name:tab.name});
   renderTabs();renderTree(true);status(msg("Source preview. The original is not changed."));
 }
-function activate(tab){
-  collect();hideGraph();hideSourceViewer();state.active=tab;at("ws-document-bar").hidden=false;if(tab.viewer){showSourceViewer(tab);return;}at("ws-empty").hidden=true;at("ws-document").hidden=false;
+function activate(tab,collectFirst=true){
+  if(collectFirst)collect();hideGraph();hideSourceViewer();state.active=tab;at("ws-document-bar").hidden=false;if(tab.viewer){showSourceViewer(tab);return;}at("ws-empty").hidden=true;at("ws-document").hidden=false;
   state.sheet.value=tab.text;at("ws-source").value=tab.text;
   at("ws-breadcrumb").textContent=((state.data.folders.find(f=>f.id===tab.wiki)||currentFolder()).label+" / "+tab.name);
   const f=currentFolder();at("ws-editor").contentEditable=String(f.writable);at("ws-source").readOnly=!f.writable;
@@ -642,6 +649,37 @@ function editPropertyDetails(key){
   if(text===original)return;tab.text=text;setMode(state.mode,false);changed(state.mode==='source'?at('ws-source').value:state.sheet.value);
  }});
 }
+function contributionConnections(work){return state.data.connections.filter(c=>c.scope==='contributions'&&c.works.includes(work));}
+async function shareContribution({tab=state.active,folder=null,wiki=tab?.wiki}={}){
+ const work=tab?.folder??workingFolder(wiki),connections=contributionConnections(work);if(!connections.length)return;
+ if(!await ensureAuthor())return;
+ if(tab&&!folder){collect();if(tab.text!==tab.origin)await saveActive({target:tab});if(tab.text!==tab.origin)throw global.I18n.error(msg('Save the document before reviewing its contribution.'));}
+ const choose=modal(msg('Choose contribution target'));for(const connection of connections)choose.content.append(button(connection.label,async()=>{
+  choose.dialog.close();if(!state.handles.has(connection.wiki))await reconnect(connection.wiki);const options=await syncOptions(connection);if(!options)throw global.I18n.error(msg('The folder was disconnected.'));
+  await global.ContributionUI.open({options,...(folder?{folder}:{page:tab.name}),author:reviewAuthor,onConfirmed:async()=>{
+   if(tab&&state.tabs.includes(tab)){const seen=await F().readFile(tab.dir,tab.name);tab.text=seen.text;tab.origin=seen.text;tab.mark=seen.mark;tab.checkpoint.text=seen.text;await storeCheckpoint(tab);if(state.active===tab)activate(tab,false);}
+   await synchronizeWikis();await refresh();if(state.active===tab)renderProperties();
+  }});
+ }));
+}
+async function manageContribution(tab,{replica=false}={}){
+ if(!await ensureAuthor())return;
+ if(!replica){collect();if(tab.text!==tab.origin)await saveActive({target:tab});if(tab.text!==tab.origin)throw global.I18n.error(msg('Save the document before reviewing its contribution.'));}
+ const connections=replica?state.data.connections.filter(c=>(c.scope??'full')==='full'&&c.works.includes(tab.folder)):contributionConnections(tab.folder);
+ async function chooseAction(connection){
+  const menu=modal(msg('Manage contribution'));const actions=replica?[['takeover','Take over document']]:[['retire','Retire contribution'],['handover','Hand over document'],['fork','Fork target document'],['takeover','Take over document'],['rekey','Update bundle binding']];
+  for(const [action,label]of actions)menu.content.append(button(msg(label),async()=>{
+   menu.dialog.close();if(!state.handles.has(connection.wiki))await reconnect(connection.wiki);const options=await syncOptions(connection,syncEpoch,{verifyTarget:action!=='rekey'});if(!options)throw global.I18n.error(msg('The folder was disconnected.'));
+   if(replica)options.contributionMeta={...options.contributionMeta,owner:{...options.contributionMeta.owner,bundle_id:tab.replica.owner}};
+   await global.ContributionUI.lifecycle({options,action,page:tab.name,author:reviewAuthor,...(replica?{takeoverModes:['request','complete']}:{}),onConfirmed:async()=>{
+    await refreshProject();if(state.tabs.includes(tab)){const seen=await F().peek(tab.dir,tab.name);if(seen){tab.text=seen.text;tab.origin=seen.text;tab.mark=seen.mark;tab.replica=await replicaFor(tab.dir,tab.name,seen.text);tab.checkpoint.text=seen.text;await storeCheckpoint(tab);if(state.active===tab)activate(tab,false);}}
+    await synchronizeWikis();await refresh();if(state.active===tab)renderProperties();
+   }});
+  }));
+ }
+ if(replica&&connections.length===1)return chooseAction(connections[0]);
+ const choose=modal(msg('Choose contribution target'));for(const connection of connections)choose.content.append(button(connection.label,()=>{choose.dialog.close();return chooseAction(connection);}));
+}
 function renderProperties(){
  renderDocumentName();const root=at('ws-document-properties');root.replaceChildren();const tab=state.active;if(!tab)return;
  let parsed;try{parsed=global.WikiCore.parseDocument(tab.text);}catch(error){root.append(el('p','ws-muted',error.message));return;}
@@ -651,6 +689,11 @@ function renderProperties(){
  const fixed={id:'text',title:'text',description:'text',type:'text',status:'text',class:'text',owner:'list',tags:'tags',aliases:'list',related:'list',sources:'list',generated:'object',resource:'object'};
  const typeKey='llmwiki.property-types/'+browserProjectKey()+'/'+(tab.wiki||tab.folder);let types={};try{types=JSON.parse(localStorage.getItem(typeKey)||'{}');}catch(_){}
  const details=el('details','ws-document-properties');details.open=localStorage.getItem('llmwiki.properties.open')!=='false';details.append(el('summary','',msg('Properties')));details.addEventListener('toggle',()=>localStorage.setItem('llmwiki.properties.open',String(details.open)));
+ if(contributionConnections(tab.folder).length&&!tab.replica){
+  details.append(button(msg('Share contribution'),()=>shareContribution({tab})),button(msg('Manage contribution'),()=>manageContribution(tab)));
+  for(const connection of contributionConnections(tab.folder)){const area=el('div');details.append(area);Promise.resolve().then(async()=>{const options=await syncOptions(connection);if(options&&state.active===tab&&area.isConnected)await global.ContributionUI.status({options,page:tab.name,container:area,onReview:()=>shareContribution({tab})});}).catch(error=>{if(area.isConnected)area.append(el('p','ws-muted',global.I18n.fromError(error)));});}
+ }
+ if(tab.replica&&!tab.replica.participation&&state.data.connections.some(c=>(c.scope??'full')==='full'&&c.works.includes(tab.folder)))details.append(button(msg('Take over document'),()=>manageContribution(tab,{replica:true})));
  function display(parent,value){
   if(Array.isArray(value)){const list=el('ul','ws-property-list');for(const item of value){const li=el('li');display(li,item);list.append(li);}parent.append(list);return;}
   if(value&&typeof value==='object'){const table=el('dl','ws-property-object');for(const [k,v]of Object.entries(value)){table.append(el('dt','',k));const dd=el('dd');if(value===parsed.head.resource&&k==='name'&&typeof v==='string')dd.append(button(v,()=>openOriginal(tab,value),null,'ws-inline-link'));else display(dd,v);table.append(dd);}parent.append(table);return;}
@@ -813,13 +856,21 @@ async function advancedSettings(first){
 }
 // The library exposes wiki targets and sources. Technical working folders stay
 // attached by stable ID and are never removed from disk, including on detach.
-function syncOptions(wiki,epoch=syncEpoch){
+async function syncOptions(connection,epoch=syncEpoch,{verifyTarget=true}={}){
   if(state.projectBlocked)return null;
-  const workId=workingFolder(wiki.id),work=state.handles.get(workId),remote=state.handles.get(wiki.id),root=state.root;
+  const c=connection.works?connection:state.data.connections.find(c=>c.wiki===connection.id);if(!c)return null;
+  const wiki=state.data.folders.find(f=>f.id===c.wiki),chosen=workingFolder(c.wiki),workId=c.works.includes(chosen)?chosen:c.works.length===1?c.works[0]:null,work=state.handles.get(workId),remote=state.handles.get(c.wiki),root=state.root,scope=c.scope??'full';
   const f=state.data.folders.find(f=>f.id===workId);
   if(!work||!remote||!f?.writable)return null;
-  return {work,remote,identity:JSON.stringify([state.data.id,wiki.id,wiki.path,workId,f.path]),canPublish:wiki.writable,
-    alive:()=>epoch===syncEpoch&&root===state.root&&state.data.folders.some(f=>f.id===wiki.id)&&state.handles.get(workId)===work&&state.handles.get(wiki.id)===remote};
+  async function bundle(dir){const seen=await F().peek(dir,'wiki/bundle.md');if(!seen)return null;try{const head=global.WikiCore.parseDocument(seen.text).head;return {bundle_id:head.id,readers:head.readers,title:head.title};}catch(error){if(scope==='contributions')throw error;return null;}}
+  const target=await bundle(remote),home=await bundle(work),same=(a,b)=>JSON.stringify([...(a??[])].sort())===JSON.stringify([...(b??[])].sort());
+  if(verifyTarget&&c.bundle_id&&target?.bundle_id!==c.bundle_id)throw Object.assign(global.I18n.error(msg('The target bundle identity changed. Check the connection before reviewing again.')),{code:'bundle_id_changed'});
+  if(verifyTarget&&c.readers&&!same(target?.readers,c.readers))throw Object.assign(global.I18n.error(msg('The target reader circle changed. Check the connection before reviewing again.')),{code:'audience_changed'});
+  const full=state.data.connections.find(other=>(other.scope??'full')==='full'&&other.works.includes(workId)),ownerWiki=full?state.handles.get(full.wiki)??null:null;
+  const sources=c.sources.map(id=>{const f=state.data.folders.find(f=>f.id===id),dir=state.handles.get(id);return {...f,store:dir?global.WikiCore.browserStore(dir,F(),R()):null};});
+  const contributionMeta=P().connectionMeta(state.data,c,f,{target,home,ownerWiki,sources});
+  return {work,remote,project:root,connection:c.id,ownerRemote:ownerWiki,scope,contributionMeta,...(scope==='participation'?{participation:c.participation}:{}),identity:P().syncIdentity(state.data,wiki,f,c),canPublish:wiki.writable&&scope!=='participation',
+    alive:()=>epoch===syncEpoch&&root===state.root&&state.data.connections.some(candidate=>candidate.id===c.id)&&state.handles.get(workId)===work&&state.handles.get(wiki.id)===remote};
 }
 async function synchronizeWikis(){
   if(!state.root||!state.data||state.projectBlocked||!global.EditorSync||state.reviewBusy)return;
@@ -827,21 +878,23 @@ async function synchronizeWikis(){
   if(syncRunning)return syncRunning;
   const epoch=syncEpoch;
   syncRunning=(async()=>{
-    for(const wiki of state.data.folders.filter(f=>f.kind==='wiki')){
+    const rank=c=>(c.scope??'full')==='full'&&c.mode==='gemeinsam'?0:c.scope==='contributions'?1:(c.scope??'full')==='full'?2:3;
+    for(const connection of [...state.data.connections].sort((a,b)=>rank(a)-rank(b))){
       if(epoch!==syncEpoch)break;
-      const options=syncOptions(wiki,epoch);if(!options)continue;
+      const wiki=state.data.folders.find(f=>f.id===connection.wiki);
       try{
-        if(await F().permissionState(options.work,'readwrite')!=='granted'){syncResults.set(wiki.id,{error:msg('Allow write access to edit this wiki.')});continue;}
+        const options=await syncOptions(connection,epoch);if(!options)continue;
+        if(await F().permissionState(options.work,'readwrite')!=='granted'){syncResults.set(connection.id,{error:msg('Allow write access to edit this wiki.')});continue;}
         options.canPublish=options.canPublish&&await F().permissionState(options.remote,'readwrite')==='granted';
-        const result=await global.EditorSync.run(options);syncResults.set(wiki.id,result);
-      }catch(error){syncResults.set(wiki.id,{error:global.I18n.fromError(error)});}
+        const result=await global.EditorSync.run(options);syncResults.set(connection.id,result);
+      }catch(error){const result={error:global.I18n.fromError(error)};syncResults.set(connection.id,result);}
     }
   })();
   try{await syncRunning;}finally{syncRunning=null;}
 }
 async function syncDetails(wiki){
   if(!state.root)return requestProjectAccess(()=>syncDetails(wiki));
-  const d=modal(msg('Synchronization')),result=syncResults.get(wiki.id);
+  const d=modal(msg('Synchronization')),result=wikiSyncResult(wiki.id);
   if(result?.error)d.content.append(el('p','',result.error));
   if(result?.pending)d.content.append(el('p','ws-muted',msg('Some changes need write access or an author record. The agent can review them.')));
   for(const pending of result?.pending_details||[])if(pending.reason!=='author_chain_missing')d.content.append(el('p','ws-muted',pending.page+' · '+pending.reason));
@@ -849,13 +902,27 @@ async function syncDetails(wiki){
     const card=el('article','ws-sync-conflict');card.append(el('h3','',conflict.page));
     reviewDiff(card,conflict.mine??'',conflict.theirs??'');
     card.append(el('p','ws-muted',msg('Your version is on the left, the wiki version on the right. Both are kept until you decide.')));
+    const outside=conflict.reason==='uncovered_remote_change';
+    if(outside)card.append(el('p','ws-muted',msg('This version was changed outside the working copy. No author has recorded it. Adopting records it as your change; discarding replaces it at the next synchronization and preserves the observed text in history.')));
+    if(conflict.reason==='discard_stale')card.append(el('p','ws-muted',msg('The previous discard decision expired because a file or its author record changed. Review both versions again.')));
     let peer={author:''};try{const remote=state.handles.get(wiki.id);if(remote)peer=(await R().read(remote,conflict.page)).events.filter(e=>e.text===conflict.theirs).at(-1)||peer;}catch(_){/* Without a matching journal entry, attribution stays unknown. */}
     const reason=field(card,msg('Comment to {author}',{author:authorLabel(peer)}),'','textarea');reason.maxLength=10000;
     const message=el('p','ws-muted');card.append(message);
-    async function decide(value){try{if(!await ensureAuthor())return;await checkProjectInstance(state.root,await P().read(state.root));const options=syncOptions(wiki);if(!options)throw global.I18n.error(msg('The folder was disconnected.'));const tab=state.active&&state.active.folder===workingFolder(wiki.id)&&state.active.name===conflict.page?state.active:null;if(tab)await keepLocalDraft(tab);await global.WikiCore.validateEdit(options.work,conflict.page,value,F(),R());await global.EditorSync.resolve(options,conflict,value,reviewAuthor,reason.value);await global.WikiCore.updateIndex(options.work,F(),R());await synchronizeWikis();await refresh();d.dialog.close();if(tab){await F().dropDraft(draftKey(tab),tab.name);state.tabs=state.tabs.filter(t=>t!==tab);state.active=null;await openWikiFile(wiki.id,tab.name);}}catch(error){global.I18n.setText(message,global.I18n.fromError(error));}}
-    if(conflict.mine!==null)card.append(button(msg('Keep my version'),()=>decide(conflict.mine)));
-    if(conflict.theirs!==null)card.append(button(msg('Take wiki version'),()=>decide(conflict.theirs)));
-    card.append(button(msg('Create new version'),()=>{const edit=modal(msg('Create new version'));const text=field(edit.content,msg('Proposed text'),conflict.mine??conflict.theirs??'','textarea');edit.foot.append(button(msg('Save'),async()=>{edit.dialog.close();await decide(text.value);}));}));d.content.append(card);
+    async function decide(value,choice=null){try{if(!await ensureAuthor())return;await checkProjectInstance(state.root,await P().read(state.root));const options=await syncOptions(state.data.connections.find(c=>c.id===conflict.connection)??wiki);if(!options)throw global.I18n.error(msg('The folder was disconnected.'));const tab=state.active&&state.active.folder===workingFolder(wiki.id)&&state.active.name===conflict.page?state.active:null;if(tab)await keepLocalDraft(tab);if(choice!=='discard'){
+      // Adoption keeps an existing remote document verbatim, including legacy
+      // plain Markdown that has no local copy yet. Resolve still checks both
+      // observed versions before it records the decision or writes any bytes.
+      const adopting=outside&&choice==='adopt';await global.WikiCore.validateEdit(adopting?options.remote:options.work,adopting?(conflict.destination??conflict.page):conflict.page,value,F(),R());
+    }await global.EditorSync.resolve(options,conflict,value,reviewAuthor,reason.value,choice);if(choice!=='discard')await global.WikiCore.updateIndex(options.work,F(),R());await synchronizeWikis();await refresh();d.dialog.close();if(tab){await F().dropDraft(draftKey(tab),tab.name);state.tabs=state.tabs.filter(t=>t!==tab);state.active=null;await openWikiFile(wiki.id,tab.name);}}catch(error){global.I18n.setText(message,global.I18n.fromError(error));}}
+    if(outside){
+      card.append(button(msg('Adopt as my change'),()=>decide(conflict.theirs,'adopt')));
+      if(conflict.mine!==null)card.append(button(msg('Discard external version'),()=>decide(conflict.mine,'discard')));
+      card.append(button(msg('Leave open'),()=>d.dialog.close()));
+    }else{
+      if(conflict.mine!==null)card.append(button(msg('Keep my version'),()=>decide(conflict.mine)));
+      if(conflict.theirs!==null)card.append(button(msg('Take wiki version'),()=>decide(conflict.theirs)));
+      card.append(button(msg('Create new version'),()=>{const edit=modal(msg('Create new version'));const text=field(edit.content,msg('Proposed text'),conflict.mine??conflict.theirs??'','textarea');edit.foot.append(button(msg('Save'),async()=>{edit.dialog.close();await decide(text.value);}));}));
+    }d.content.append(card);
   }
   if(!result)d.content.append(el('p','ws-muted',msg('Connect the wiki folder to synchronize.')));
   if(state.root&&!state.handles.has(wiki.id))d.foot.append(button(msg('Connect folder'),async()=>{await reconnect(wiki.id);d.dialog.close();}));
@@ -1159,7 +1226,7 @@ function renderOutline(withBacklinks=true){
 async function backlinks(){
  if(state.graphOpen)return;
   const run=++state.backlinkRun;const tab=state.active,root=at("ws-backlinks");if(!tab||tab.viewer||!root)return;root.replaceChildren();
-  if(tab.wiki&&global.WikiCore){const view=await knowledgeGraph();if(state.active!==tab||run!==state.backlinkRun)return;const incoming=[...new Set((view.core?.incoming.get(global.WikiCore.pageKey(tab.wiki,tab.name))??[]).filter(e=>e.valid).map(e=>e.source))];for(const key of incoming){const p=view.core.pages.get(key);root.append(button(p.head.title||p.path,()=>openWikiFile(p.wiki,p.path),null,'ws-backlink'));}if(!incoming.length)root.append(el('p','ws-muted',msg('No backlinks yet')));return;}
+  if(tab.wiki&&global.WikiCore){const view=await knowledgeGraph();if(state.active!==tab||run!==state.backlinkRun)return;const incoming=[...new Set((view.core?.incoming.get(global.WikiCore.pageKey(view.connectionScopes.get(tab.wiki)??tab.wiki,tab.name))??[]).filter(e=>e.valid).map(e=>e.source))];for(const key of incoming){const p=view.core.pages.get(key);root.append(button(p.head.title||p.path,()=>openWikiFile(view.navigation.get(p.wiki)??p.wiki,p.path),null,'ws-backlink'));}if(!incoming.length)root.append(el('p','ws-muted',msg('No backlinks yet')));return;}
   let count=0;
   for(const f of state.files.get(tab.folder)||[]){
     if(state.active!==tab||run!==state.backlinkRun)return;if(f.name===tab.name||!f.name.endsWith(".md")||f.size>2000000)continue;
@@ -1170,9 +1237,17 @@ async function backlinks(){
   if(!count&&state.active===tab&&run===state.backlinkRun)root.append(el("p","ws-muted",msg("No backlinks yet")));
 }
 async function knowledgeGraph(){
- const wikis=state.data.folders.filter(f=>f.kind==='wiki'&&state.handles.has(workingFolder(f.id))),documents=[];
- for(const wiki of wikis){const dir=state.handles.get(workingFolder(wiki.id));for(const name of [...new Set(['schema/TYPES.md','.llmwiki/identity-aliases.json',...wikiEntries(wiki.id).filter(f=>f.name.endsWith('.md')).map(f=>f.name)])])try{const seen=await F().readFile(dir,name);if(typeof seen.text==='string')documents.push({wiki:wiki.id,path:name,text:seen.text});}catch(_){} }
- return global.WikiCore.fromDocuments(documents,wikis);
+ const groups=[],connectionScopes=new Map(),navigation=new Map(),wikis=[];
+ const connections=[...state.data.connections].sort((a,b)=>Number((a.scope??'full')!=='full')-Number((b.scope??'full')!=='full'));
+ for(const connection of connections){const work=workingFolder(connection.wiki),dir=state.handles.get(work);if(!dir)continue;let group;
+  for(const candidate of groups)if(dir===candidate.dir||dir.isSameEntry&&await dir.isSameEntry(candidate.dir)){group=candidate;break;}
+  if(group){group.connections.push(connection);continue;}groups.push({connection,connections:[connection],work,dir});
+ }
+ for(const group of groups){const full=(group.connection.scope??'full')==='full',configured=state.data.folders.find(f=>f.id===(full?group.connection.wiki:group.work));let id=group.connection.wiki;
+  if(!full){const bundle=await F().peek(group.dir,'wiki/bundle.md');id=bundle?global.WikiCore.parseDocument(bundle.text).head.id??group.work:group.work;}
+  wikis.push({...configured,id,store:global.WikiCore.browserStore(group.dir,F(),R())});navigation.set(id,group.connection.wiki);for(const c of group.connections)connectionScopes.set(c.wiki,id);
+ }
+ const view=await global.WikiCore.fromDocuments([],wikis);return {...view,connectionScopes,navigation};
 }
 async function openOriginal(tab,resource){
  const allowed=state.data.connections.some(c=>c.wiki===tab.wiki&&c.sources.includes(resource.store));
@@ -1183,7 +1258,7 @@ async function followLink(tab,target){
  const resource=global.WikiCore.parseDocument(tab.text).head.resource;
  if(resource&&typeof resource.link==='string'){const match=/\[[^\]]*\]\(<?([^)>]+)>?\)/.exec(resource.link);if(match&&match[1]===target)return openOriginal(tab,resource);}
 
-  if(tab.wiki&&global.WikiCore){const graph=await knowledgeGraph(),found=global.WikiCore.resolve(graph,tab.wiki,tab.name,target);if(!found)throw global.I18n.error(msg("Target not found: {target}",{target}));return openWikiFile(found.wiki,found.path);}
+  if(tab.wiki&&global.WikiCore){const graph=await knowledgeGraph(),found=global.WikiCore.resolve(graph,graph.connectionScopes.get(tab.wiki)??tab.wiki,tab.name,target);if(!found)throw global.I18n.error(msg("Target not found: {target}",{target}));return openWikiFile(graph.navigation.get(found.wiki)??found.wiki,found.path);}
   const name=targetPath(tab.name,target);if(!name)throw global.I18n.error(msg("This link does not point to a local file."));
   const files=state.files.get(tab.folder)||[];const direct=files.find(f=>f.name===name);
   const matches=direct?[direct]:files.filter(f=>f.name.split("/").pop()===name);
@@ -1205,7 +1280,7 @@ async function renderMarkdown(text,root,tab,depth,context={instance:state.instan
         const target=m[2]||m[5],label=m[2]?m[2].split("|").pop():m[4],embed=m[1]||m[3];
         if(embed){const box=el("span","ws-embed",label);parent.append(box);embedTarget(tab,target,box,depth,context).catch(error=>{global.I18n.setText(box,global.I18n.fromError(error));});}
         else if(/^https?:/i.test(target)){const a=el("a","ws-inline-link",label);a.href=target;a.target="_blank";a.rel="noopener noreferrer";parent.append(a);}
-        else{const b=button(label,()=>followLink(tab,target),null,"ws-inline-link");parent.append(b);if(tab.wiki&&global.WikiCore&&/^[0-9A-HJKMNP-TV-Z]{26}$/.test(label))idTargets().then(async view=>{if(context.instance!==state.instance||!b.isConnected||await F().permissionState(state.handles.get(tab.folder),'read')!=='granted')return;const p=global.WikiCore.resolve(view,tab.wiki,tab.name,target);if(p?.head.title)b.textContent=p.head.title;}).catch(()=>{});}
+        else{const b=button(label,()=>followLink(tab,target),null,"ws-inline-link");parent.append(b);if(tab.wiki&&global.WikiCore&&/^[0-9A-HJKMNP-TV-Z]{26}$/.test(label))idTargets().then(async view=>{if(context.instance!==state.instance||!b.isConnected||await F().permissionState(state.handles.get(tab.folder),'read')!=='granted')return;const p=global.WikiCore.resolve(view,view.connectionScopes.get(tab.wiki)??tab.wiki,tab.name,target);if(p?.head.title)b.textContent=p.head.title;}).catch(()=>{});}
       }else if(m[11])parent.append(el('u','',m[11].slice(3,-4)));
       else if(m[12]){const formula=el('span');global.WikiCore.renderFormula(formula,m[12].slice(1,-1));parent.append(formula);}
       else if(m[13]){const id=m[14],number=references.includes(id)?references.indexOf(id)+1:references.push(id),sup=el('sup'),link=el('a','',String(number));link.setAttribute('role','doc-noteref');link.href='#footnote-'+encodeURIComponent(id);link.addEventListener('click',event=>{event.preventDefault();root.querySelector('[data-footnote="'+CSS.escape(id)+'"]')?.focus();});sup.append(link);parent.append(sup);}
@@ -1380,14 +1455,14 @@ async function relationshipDialog(){
  const labels={references:'Refers to',refines:'Refines',contradicts:'Contradicts',superseded_by:'Is superseded by',part_of:'Is part of',decides:'Decides',learned_from:'Learned from'};let options=[];
  const fill=(node,values)=>{const selected=node.value;node.replaceChildren();for(const [value,label]of values){const o=el('option','',label);o.value=value;node.append(o);}if(values.some(v=>v[0]===selected))node.value=selected;};
  function targets(){fill(target,options.filter(o=>o.type===type.value).map(o=>[JSON.stringify([o.wiki,o.page]),(state.data.folders.find(w=>w.id===o.wiki)?.label||o.wiki)+' / '+o.title+' · '+o.page]));}
- function choices(){options=global.WikiCore.relationshipOptions(view,{wiki:tab.wiki,page:tab.name,text:original,direction:direction.value});fill(type,[...new Set(options.map(o=>o.type))].map(t=>[t,labels[t]?msg(labels[t]):t]));targets();global.I18n.setText(hint,msg(direction.value==='in'?'The relationship is added to the note it starts from. That note opens for editing.':'The relationship is added to this draft and saved with your other changes.'));}
+ function choices(){options=global.WikiCore.relationshipOptions(view,{wiki:view.connectionScopes.get(tab.wiki)??tab.wiki,page:tab.name,text:original,direction:direction.value});fill(type,[...new Set(options.map(o=>o.type))].map(t=>[t,labels[t]?msg(labels[t]):t]));targets();global.I18n.setText(hint,msg(direction.value==='in'?'The relationship is added to the note it starts from. That note opens for editing.':'The relationship is added to this draft and saved with your other changes.'));}
  direction.addEventListener('change',choices);type.addEventListener('change',targets);choices();
  d.foot.append(button(msg('Insert'),async()=>{try{
   if(state.active!==tab||tab.text!==original)throw global.I18n.error(msg('The note changed while the dialog was open. Reopen the dialog.'));
-  if(!target.value)return;const [targetWiki,targetPage]=JSON.parse(target.value),draft=global.WikiCore.relationshipDraft(view,{wiki:tab.wiki,page:tab.name,text:original,direction:direction.value,type:type.value,targetWiki,targetPage,reason:reason.value});
-  const folder=workingFolder(draft.wiki),dir=state.handles.get(folder);if(!dir||await F().permissionState(dir,'readwrite')!=='granted')throw global.I18n.error(msg('The folder was disconnected.'));
+  if(!target.value)return;const [targetWiki,targetPage]=JSON.parse(target.value),draft=global.WikiCore.relationshipDraft(view,{wiki:view.connectionScopes.get(tab.wiki)??tab.wiki,page:tab.name,text:original,direction:direction.value,type:type.value,targetWiki,targetPage,reason:reason.value});
+  const destinationWiki=view.navigation.get(draft.wiki)??draft.wiki,folder=workingFolder(destinationWiki),dir=state.handles.get(folder);if(!dir||await F().permissionState(dir,'readwrite')!=='granted')throw global.I18n.error(msg('The folder was disconnected.'));
   await global.WikiCore.validateEdit(dir,draft.page,draft.text,F(),R());if(state.active!==tab||tab.text!==original)throw global.I18n.error(msg('The note changed while the dialog was open. Reopen the dialog.'));
-  if(draft.wiki!==tab.wiki||draft.page!==tab.name){await openWikiFile(draft.wiki,draft.page);if(state.active?.text!==draft.before)throw global.I18n.error(msg('The note changed while the dialog was open. Reopen the dialog.'));}
+  if(destinationWiki!==tab.wiki||draft.page!==tab.name){await openWikiFile(destinationWiki,draft.page);if(state.active?.text!==draft.before)throw global.I18n.error(msg('The note changed while the dialog was open. Reopen the dialog.'));}
   d.dialog.close();if(state.mode==='source'){at('ws-source').value=draft.text;changed(draft.text);at('ws-source').focus();}
   else{const parsed=global.WikiCore.parseDocument(draft.text),prior=global.WikiCore.parseDocument(state.active.text);(state.active.relationshipHistory||=[]).push({before:prior.body,after:parsed.body,relatedBefore:prior.head.related??[],relatedAfter:parsed.head.related});state.editorPrefix=draft.text.slice(0,parsed.offset);state.sheet.replace({from:0,to:state.sheet.value.length},parsed.body);collect();}
   renderProperties();
@@ -1424,7 +1499,7 @@ async function initializeReview(tab,seen){
   const remembered=await R().checkpoint(checkpointKey(tab),tab.name);
   if(remembered){tab.checkpoint=remembered;tab.pendingRecord=remembered.pendingRecord||null;return;}
   const journal=await R().read(tab.dir,tab.name);
-  tab.checkpoint={text:seen.text,seen:Array.from(new Set([...(tab.checkpoint?tab.checkpoint.seen:[]),...journal.events.filter(e=>['change','accept'].includes(e.kind)).map(e=>e.id)])),at:new Date().toISOString(),drafts:[]};
+  tab.checkpoint={text:seen.text,seen:Array.from(new Set([...(tab.checkpoint?tab.checkpoint.seen:[]),...R().initialSeen(journal.events,seen.text)])),at:new Date().toISOString(),drafts:[]};
   await R().checkpoint(checkpointKey(tab),tab.name,tab.checkpoint);
 }
 async function storeCheckpoint(tab){await R().checkpoint(checkpointKey(tab),tab.name,tab.checkpoint);}
@@ -1450,7 +1525,18 @@ async function ensureAuthor(){
   const closed=new Promise(resolve=>d.dialog.addEventListener('close',()=>resolve(accepted),{once:true}));
   d.foot.append(button(msg('Use author name'),async()=>{try{await setAuthor(name.value);accepted=true;d.dialog.close();}catch(e){global.I18n.setText(error,global.I18n.fromError(e));}}));name.focus();return closed;
 }
+async function replicaFor(dir,page,text=null){
+ const seen=text??(await F().readFile(dir,page)).text,head=global.WikiCore.parseDocument(seen).head,journal=await R().read(dir,page),events=journal.events.filter(e=>e.kind!=='contribution_root'||e.source?.document===String(head.id??'')),handovers=[];
+ if(head.id){const folder='.llmwiki/contributions/handover/'+encodeURIComponent(head.id);for(const path of await global.WikiContributions.files(dir,folder))if(path.endsWith('.json')){const record=await global.WikiContributions.readJSON(dir,path);if(path===folder+'/'+record?.id+'.json'&&record?.document===String(head.id)&&global.WikiCore.validateHandover(record,events))handovers.push(record);}}
+ const replica=global.WikiCore.replicaIdentity(events,{handovers})||(!handovers.length&&head.shared_copy&&!head.shared_copy.until?head.shared_copy:null);if(replica)return replica;
+ for(const connection of state.data.connections.filter(c=>c.scope==='participation'))for(const id of connection.works){const handle=state.handles.get(id);if(!handle||dir!==handle&&(!dir.isSameEntry||!await dir.isSameEntry(handle)))continue;
+  const wiki=state.data.folders.find(f=>f.id===connection.wiki),work=state.data.folders.find(f=>f.id===id),field=connection.participation.field,identity=P().syncIdentity(state.data,wiki,work,connection),file=await F().peek(dir,'.llmwiki/participation/'+await R().hash(identity+'/'+field)+'.json');
+  if(file){const record=JSON.parse(file.text);if(record.format==='llmwiki-participation-sync/1'&&record.field===field&&Array.isArray(record.pages)&&record.pages.includes(page))return {participation:true,owner:connection.bundle_id??wiki.label};}
+ }
+ return null;
+}
 async function writableTab(tab){
+  tab.replica=await replicaFor(tab.dir,tab.name);if(tab.replica){if(state.active===tab)activate(tab);throw global.I18n.error(msg(tab.replica.participation?'Participation views are read only.':'Shared copies are read only. Review proposed changes in their home bundle.'));}
   if(state.projectBlocked)throw global.I18n.error(msg('This start file belongs to an earlier setup. Open the current LLM-Wiki.html in your project folder.'));
   if(tab.root!==state.root||tab.projectId!==state.data.id)throw global.I18n.error(msg('The folder connection or write permission changed. Reopen the project.'));
   const configured=state.data.folders.find(f=>f.id===tab.folder),dir=state.handles.get(tab.folder);
@@ -1519,7 +1605,7 @@ async function scanReviews(){
       let current;try{current=await F().readFile(dir,name);}catch(error){if(error.name==='NotFoundError')continue;throw error;}
       const key=R().localKey(state.data.id+'/'+(state.instance||'legacy'),id,folder.path,reviewAuthor);
       let saved=await R().checkpoint(key,name);
-      if(!saved){saved={text:current.text,seen:events.filter(e=>['change','accept'].includes(e.kind)).map(e=>e.id),at:new Date().toISOString(),drafts:[]};await R().checkpoint(key,name,saved);}
+      if(!saved){saved={text:current.text,seen:R().initialSeen(events,current.text),at:new Date().toISOString(),drafts:[]};await R().checkpoint(key,name,saved);}
       const tasks=await R().tasks(events,reviewAuthor,saved,current.text,name);
       if(tasks.length)items.push({folder:id,event:tasks[0],events:tasks});
       const tab=state.tabs.find(t=>t.folder===id&&t.name===name&&!t.viewer);
@@ -1583,6 +1669,8 @@ async function reviewDialog(selected=null){
   const message=el('p','ws-review-message');message.setAttribute('role','status');d.foot.append(message);
   const acting=async(action)=>{if(state.reviewBusy)return;state.reviewBusy=true;try{await action();}catch(e){global.I18n.setText(message,global.I18n.fromError(e));}finally{state.reviewBusy=false;}};
   d.content.append(el('p','ws-muted',msg('Your comparison baseline is your last saved or accepted version. Opening this dialog does not accept changes.')));
+  const replica=await replicaFor(tab.dir,tab.name,seen.text);if(replica){d.content.append(el('p','ws-contribution-origin',msg(replica.participation?'Participation view':'Shared copy')));if(replica.owner)d.content.append(el('p','ws-contribution-owner',msg(replica.participation?'Source bundle: {owner}':'Home bundle: {owner}',{owner:replica.owner})));}
+  const origins=new Map();for(const event of journal.events){const file=await F().peek(tab.dir,await R().eventPath(event)+'.via');if(file)try{const via=JSON.parse(file.text);if(via.event===event.id&&typeof via.target==='string')origins.set(event.id,via.target);}catch{}}
   const identity=el('p','ws-review-author');identity.append(el('strong','',msg('{kind} by {author}',{kind:kindLabel(selected.kind),author:authorLabel(selected)})),el('span','ws-muted',selected.kind==='external'?msg('No matching author record is available.'):reviewTime(selected.at)));d.content.append(identity);
   if(external)d.content.append(el('p','ws-muted',msg('Saved file: author unknown.')));
   if(external)d.content.append(button(msg('This change was made by me'),()=>acting(async()=>{
@@ -1614,6 +1702,8 @@ async function reviewDialog(selected=null){
     for(const e of visibleEvents){
       const card=el('details','ws-review-event');card.dataset.eventId=e.id;
       const title=el('summary','');title.append(el('span','',msg('{kind} by {author}',{kind:kindLabel(e.kind),author:authorLabel(e)})),el('small','ws-muted',reviewTime(e.at)));card.append(title);
+      const via=origins.get(e.id);card.append(el('p','ws-review-origin ws-muted',e.kind==='external'?msg('Origin: outside the recorded process'):via?msg('Origin: target bundle {target}',{target:via}):e.kind==='contribution_root'?msg('Origin: contribution from {owner}',{owner:e.source.owner}):msg('Origin: this working folder')));
+      if(localConversation(e))card.append(el('small','ws-review-circle',msg('Only here')));
       if(e.message)card.append(el('p','',e.message));
       if(e.anchor){card.append(el('small','ws-muted',msg('Line {line}',{line:e.anchor.afterLine})));reviewDiff(card,e.anchor.before.join('\n'),e.anchor.after.join('\n'));}
       if(e.kind==='comment'){const closed=R().threadState(journal.events,e.thread)==='resolved';card.append(el('small','ws-muted',msg(closed?'Resolved':'Open')),button(msg(closed?'Reopen comment':'Resolve comment'),()=>acting(async()=>{await writableTab(tab);if(!await ensureAuthor())return;const thread=journal.events.filter(v=>v.thread===e.thread),parents=new Set(thread.map(v=>v.parent)),last=thread.filter(v=>!parents.has(v.id)).at(-1)||e;const action=R().reply(last,closed?'reopen':'resolve',reviewAuthor,seen.text,seen.text,'');await R().append(tab.dir,action);d.dialog.close();await compare();})));}
@@ -1627,14 +1717,18 @@ async function reviewDialog(selected=null){
   drawTimeline();d.content.append(timeline);
   if(journal.incomplete||journal.unreadable)d.content.append(el('p','ws-muted',msg('Some change records are incomplete. Only confirmed writes are attributed.')));
   if(tab.pendingRecord)d.foot.append(button(msg('Retry author record'),()=>acting(async()=>{await writableTab(tab);const current=await F().readFile(tab.dir,tab.name);if(current.text!==tab.pendingRecord.text)throw global.I18n.error(msg('The file changed again. Reopen the comparison before deciding.'));if(!await R().receipt(tab.dir,tab.pendingRecord))throw global.I18n.error(msg('The author record could not be completed.'));tab.pendingRecord=null;tab.checkpoint.pendingRecord=null;await storeCheckpoint(tab);d.dialog.close();await compare();})));
-  const reason=field(d.content,msg('Comment to {author} (optional)',{author:selected.author===reviewAuthor?(selected.recipients.join(', ')||String(msg('Unknown author'))):authorLabel(selected)}),'', 'textarea');reason.id='ws-review-reason';reason.maxLength=10000;
+  function localConversation(event){return event.circle==='local'||journal.events.some(e=>e.thread===event.thread&&e.circle==='local');}
+  function circleSelect(parent,locked=localConversation(selected),initial='normal'){
+   const choice=select(parent,msg('Comment visibility'),[['normal',msg('Normal sharing')],['local',msg('Only here')]],locked?'local':initial);choice.disabled=locked||!currentFolder().writable;parent.append(el('p','ws-muted',msg('Local comments are not included when sharing contributions.')));return choice;
+  }
+  const reason=field(d.content,msg('Comment to {author} (optional)',{author:selected.author===reviewAuthor?(selected.recipients.join(', ')||String(msg('Unknown author'))):authorLabel(selected)}),'', 'textarea');reason.id='ws-review-reason';reason.maxLength=10000;const circle=circleSelect(d.content);
   d.content.append(el('p','ws-muted',msg('Rejecting proposes your previous confirmed text. A new version proposes your edited text. Both are sent back for review; the saved file changes only when a proposal is accepted.')));
-  function currentReply(kind,base,text,message){return {...R().reply(selected,kind,reviewAuthor,base,text,message),page:tab.name};}
+  function currentReply(kind,base,text,message,visibility=circle.value){return {...R().reply(selected,kind,reviewAuthor,base,text,message,visibility==='local'?{circle:'local'}:{}),page:tab.name};}
   async function changeAction(choice,index,before,after){
     const h=R().diff(before,after)[index],attributed=after===seen.text?R().attribution(before,after,journal.events)[index]:{authors:[selected],unknown:false},recipients=[...new Set(attributed.authors.map(e=>e.author).filter(Boolean))];
     if(choice==='comment'){
-      const ask=modal(msg('Question to {author}',{author:recipients.join(', ')||String(msg('Unknown author'))})),input=field(ask.content,msg('Comment on this change'),'', 'textarea');input.maxLength=10000;
-      ask.foot.append(button(msg('Send response'),()=>acting(async()=>{if(!input.value.trim())return;await writableTab(tab);if(!await ensureAuthor())return;const now=await F().readFile(tab.dir,tab.name);if(now.text!==seen.text)throw global.I18n.error(msg('The file changed again. Reopen the comparison before deciding.'));await ensureParent();const comment=currentReply('comment',seen.text,seen.text,input.value);comment.recipients=recipients.filter(a=>a!==reviewAuthor);comment.anchor={...h,revision:seen.mark||'',beforeHash:await R().hash(before),afterHash:await R().hash(after)};await R().append(tab.dir,comment);ask.dialog.close();d.dialog.close();await compare(comment);})));return;
+      const ask=modal(msg('Question to {author}',{author:recipients.join(', ')||String(msg('Unknown author'))})),input=field(ask.content,msg('Comment on this change'),'', 'textarea');input.maxLength=10000;const commentCircle=circleSelect(ask.content,localConversation(selected),circle.value);
+      ask.foot.append(button(msg('Send response'),()=>acting(async()=>{if(!input.value.trim())return;await writableTab(tab);if(!await ensureAuthor())return;const now=await F().readFile(tab.dir,tab.name);if(now.text!==seen.text)throw global.I18n.error(msg('The file changed again. Reopen the comparison before deciding.'));await ensureParent();const comment=currentReply('comment',seen.text,seen.text,input.value,commentCircle.value);comment.recipients=recipients.filter(a=>a!==reviewAuthor);comment.anchor={...h,revision:seen.mark||'',beforeHash:await R().hash(before),afterHash:await R().hash(after)};await R().append(tab.dir,comment);ask.dialog.close();d.dialog.close();await compare(comment);})));return;
     }
     return acting(async()=>{await writableTab(tab);if(!await ensureAuthor())return;const current=await F().readFile(tab.dir,tab.name);if(current.text!==seen.text)throw global.I18n.error(msg('The file changed again. Reopen the comparison before deciding.'));await ensureParent();
       if(choice==='accept'){
@@ -1708,19 +1802,27 @@ async function renderGraph(){
     if(snapshot.format!=='llmwiki-project-graph/1'||snapshot.project!==state.data.id||!Array.isArray(snapshot.nodes)||!Array.isArray(snapshot.edges)||!snapshot.revision)throw Error('Invalid project graph snapshot. Run maintain-llm-wiki to refresh it.');
   }catch(error){if(run!==state.graphRun)return;if(state.graphView){state.graphView.destroy();state.graphView=null;}state.graphSignature=null;list.replaceChildren();global.I18n.setText(summary,msg('No current project graph. Run maintain-llm-wiki to build the graph.'));return;}
   if(run!==state.graphRun||!state.graphOpen||root!==state.root)return;
-  const wikis=state.data.folders.filter(f=>f.kind==='wiki'),available=new Set();
-  for(const wiki of wikis){const handle=state.handles.get(workingFolder(wiki.id));if(handle&&await F().permissionState(handle,'read')==='granted')available.add(wiki.id);}
+  const scopes=Array.isArray(snapshot.wikis)?snapshot.wikis:state.data.folders.filter(f=>f.kind==='wiki'),wikis=scopes.flatMap(scope=>{
+   const connection=scope.connection?state.data.connections.find(c=>c.id===scope.connection):state.data.connections.find(c=>c.wiki===scope.id);if(!connection)return [];
+   const chosen=workingFolder(connection.wiki),work=scope.work??chosen;if(!connection.works.includes(work)||chosen&&work!==chosen)return [];
+   return [{...scope,work,connection:connection.id,wiki:connection.wiki}];
+  }),available=new Set();
+  for(const wiki of wikis){const handle=state.handles.get(wiki.work);if(handle&&await F().permissionState(handle,'read')==='granted')available.add(wiki.id);}
   if(run!==state.graphRun||!state.graphOpen||root!==state.root)return;
-  const signature=JSON.stringify([seen.mark||seen.text,wikis.map(w=>[w.id,w.label,available.has(w.id)]),[...state.graphHidden].sort()]);
+  const signature=JSON.stringify([seen.mark||seen.text,wikis.map(w=>[w.id,w.label,w.work,w.connection,available.has(w.id)]),[...state.graphHidden].sort()]);
   if(state.graphView&&state.graphSignature===signature)return;
   const labels=new Map(wikis.map(w=>[w.id,w.label])),nodes=snapshot.nodes.filter(n=>!global.WikiCore.navigationPage(n.path)&&available.has(n.wiki)&&!state.graphHidden.has(n.wiki)&&typeof n.key==='string'&&typeof n.path==='string'&&F().writableName(n.path)!==null).map(n=>({path:n.key,filePath:n.path,wiki:n.wiki,wikiLabel:labels.get(n.wiki),label:n.title||n.path})),ids=new Set(nodes.map(n=>n.path));
   const graph={nodes,edges:snapshot.edges.filter(e=>ids.has(e.source)&&ids.has(e.target)),unresolved:snapshot.findings?.length||0};
-  list.replaceChildren();for(const wiki of wikis){const row=el('label','ws-graph-wiki-choice'),check=el('input');check.type='checkbox';check.checked=!state.graphHidden.has(wiki.id);check.disabled=!available.has(wiki.id);check.dataset.wiki=wiki.id;check.setAttribute('aria-label',String(msg('Show wiki: {name}',{name:wiki.label})));row.append(check,el('span','',wiki.label));list.append(row);check.addEventListener('change',()=>{if(check.checked)state.graphHidden.delete(wiki.id);else state.graphHidden.add(wiki.id);renderGraph().catch(report);});}
+  // Keep unrepresented configured wikis visible without importing remote
+  // contents. Connections sharing an existing work scope add no extra choice.
+  const representedWorks=new Set(wikis.map(w=>w.work));
+  const choices=[...wikis,...state.data.folders.filter(f=>f.kind==='wiki'&&!wikis.some(w=>w.id===f.id)&&!state.data.connections.some(c=>c.wiki===f.id&&c.works.some(work=>representedWorks.has(work))))];
+  list.replaceChildren();for(const wiki of choices){const row=el('label','ws-graph-wiki-choice'),check=el('input');check.type='checkbox';check.checked=!state.graphHidden.has(wiki.id);check.disabled=!available.has(wiki.id);check.dataset.wiki=wiki.id;check.setAttribute('aria-label',String(msg('Show wiki: {name}',{name:wiki.label})));row.append(check,el('span','',wiki.label));list.append(row);check.addEventListener('change',()=>{if(check.checked)state.graphHidden.delete(wiki.id);else state.graphHidden.add(wiki.id);renderGraph().catch(report);});}
   global.I18n.setText(summary,msg('{nodes} files · {edges} connections',{nodes:nodes.length,edges:graph.edges.length}));
   summary.append(el('span','ws-muted',' · '+String(msg('Graph updated'))+': '+reviewTime(snapshot.generated_at)));
   if(graph.unresolved)global.I18n.appendText(summary,msg(' · {count} unresolved links',{count:graph.unresolved}));
   if(state.graphView)state.graphView.destroy();state.graphSignature=signature;
-  state.graphView=global.WikiGraph.mount(area,graph,{label:msg('Wiki graph'),linkLabel:msg('Link'),layoutKey:'llmwiki.graph.layout/'+browserProjectKey(),active:state.active?global.WikiGraph.key(state.active.wiki||state.active.folder,state.active.name):null,tooltips:appearance.edgeTooltips,open:id=>{const n=graph.nodes.find(n=>n.path===id);if(n&&state.handles.has(workingFolder(n.wiki)))openWikiFile(n.wiki,n.filePath).catch(report);}});
+  state.graphView=global.WikiGraph.mount(area,graph,{label:msg('Wiki graph'),linkLabel:msg('Link'),layoutKey:'llmwiki.graph.layout/'+browserProjectKey(),active:state.active?global.WikiGraph.key(wikis.find(w=>w.work===state.active.folder)?.id??state.active.wiki??state.active.folder,state.active.name):null,tooltips:appearance.edgeTooltips,open:id=>{const n=graph.nodes.find(n=>n.path===id),scope=n&&wikis.find(w=>w.id===n.wiki);if(scope&&state.handles.has(scope.work))openFile(scope.work,n.filePath,scope.wiki).catch(report);}});
 }
 
 function closeSearch(){at("ws-search-panel").hidden=true;at("ws-search-toggle").setAttribute("aria-expanded","false");}
