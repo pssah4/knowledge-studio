@@ -1,4 +1,4 @@
-# Knowledge Studio · 0.4.26
+# Knowledge Studio · 0.4.27
 
 Knowledge Studio combines an AI-maintained Markdown wiki with graph retrieval,
 retained quotations and an editor for reviewing sources and shared changes.
@@ -295,7 +295,7 @@ npm run build
 ```
 
 The build creates both skills for five platforms, the Claude Code plugin and
-[release checksums](dist/public/release-0.4.26.json). Generated downloads are available in this repository and on its release page; a source checkout can rebuild them from the pinned lockfile.
+[release checksums](dist/public/release-0.4.27.json). Generated downloads are available in this repository and on its release page; a source checkout can rebuild them from the pinned lockfile.
 
 The public repository contains product sources and build tooling. Automated runtime,
 browser and acceptance fixtures live in the private development repository and are

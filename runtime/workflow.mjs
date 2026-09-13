@@ -113,3 +113,15 @@ export async function sessions(store){let entries;try{entries=await store.list(R
  const byID=new Map(result.filter(s=>s.id).map(s=>[s.id,s]));
  for(const successor of result.filter(s=>s.complete)){if(!successor.complete)continue;const pending=[...successor.replaces],visited=new Set();while(pending.length){const id=pending.pop();if(visited.has(id)||id===successor.id)continue;visited.add(id);const previous=byID.get(id);if(!previous||!replacementMode(previous,successor.mode)||!previous.sources.every(p=>successor.sources.includes(p)))continue;pending.push(...previous.replaces);Object.assign(previous,{next:'done',outcome:'superseded',complete:false,resolved:true,replaced_by:successor.id});}}
  return result;}
+
+/** Fingerprint the actual returned review, not its retained historical identifier. */
+export async function reviewDigest(store,review){return review?store.services.hash(JSON.stringify(review)):null;}
+
+/** Opt-in response projection only; stored evidence and every workflow gate stay full. */
+export async function summarize(store,session,{connection,work}){
+ if(!session.review||!Object.hasOwn(session.review,'record'))return session;
+ const {record,...metadata}=session.review;
+ return {...session,review:{...metadata,record_omitted:true,
+  record_summary:{sources:record?.sources&&typeof record.sources==='object'&&!Array.isArray(record.sources)?Object.keys(record.sources).length:null,insights:Array.isArray(record?.insights)?record.insights.length:null,topic_pages:Array.isArray(record?.topics?.pages)?record.topics.pages.length:null},
+  detail_request:{action:'workflow.status',connection,work,id:session.id,response:'full',expected_review:await reviewDigest(store,session.review)}}};
+}

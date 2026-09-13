@@ -424,9 +424,9 @@ async function loadProject(root,loaded){
   }else{state.connection=state.data.connections[0]?.id||null;await bindHandles();status("");}
 }
 async function chooseProject(reselect=false) {
-  if(global.EditorHost){const root=await global.EditorHost.root();await loadProject(root,await P().read(root));return;}
   const workspace=at("workspace-app");workspace.inert=true;workspace.setAttribute("aria-busy","true");
   try{
+    if(global.EditorHost){const root=await global.EditorHost.root();await loadProject(root,await P().read(root));return;}
     let root=reselect?null:state.root||state.accessRoot;
     if(root){if(await F().grantPermission(root,'readwrite')!=='granted')return requestProjectAccess();}
     else root=await F().chooseFolder("readwrite",{purpose:'project',startIn:state.root||state.accessRoot||undefined});if(!root)return;

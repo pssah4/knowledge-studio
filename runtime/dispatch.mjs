@@ -52,6 +52,8 @@ export const actions=['contribute.review','contribute.confirm','contribute.folde
 export async function dispatch(root,request,options={}){
  const readOnly=root.writable===false;
  requireThat(!readOnly||queryActions.includes(request.action),'read-only','The query skill is read-only. Setup and changes belong to maintain-llm-wiki.');
+ requireThat(request.response===undefined||['workflow.review','workflow.finish','workflow.status','workflow.list','readiness'].includes(request.action)&&['summary','full'].includes(request.response),'response','Choose response summary or full only for workflow review, finish, status, list or readiness.');
+ requireThat(request.expected_review===undefined||request.action==='workflow.status'&&request.response!=='summary'&&typeof request.expected_review==='string'&&/^[a-f0-9]{64}$/.test(request.expected_review),'expected_review','Use a full workflow.status request with an expected_review SHA-256 digest.');
  if(request.action==='graph.refresh')return exportProjectGraph(root,options);
  const result=await executeAction(root,request,options);
  const stagedMutation=['collection.upgrade','collection.map','published.adopt','sharing.move','ingest.group','ingest.take_back'].includes(request.action)&&['applying','applied','rolling_back','rolled_back'].includes(result.state)&&(['apply','rollback'].includes(request.step)||request.action==='ingest.take_back');
@@ -125,6 +127,7 @@ async function executeAction(root,request,{bindings={},extract,editorHTML=null}=
       if(source?.store)try{const original=await source.store.read(head.resource.name,{binary:true});state=!original?(head.resource.availability==='missing'?'missing_acknowledged':'missing'):original.sha256===head.resource.sha256?'current':'changed';}catch{}
       originals.push({...item,state});if(!['current','missing_acknowledged'].includes(state))blocked_by.push({code:'original_'+state,...item});
     }
+    if(args.response==='summary')for(let i=0;i<workflows.length;i++)workflows[i].sessions=await Promise.all(workflows[i].sessions.map(s=>workflow.summarize(wikis[i].store,s,wikis[i])));
     return {complete:blocked_by.length===0,blocked_by,knowledge,workflows,publication,originals,notes};
    }
    const graph=await buildGraph(wikis);return {nodes:graphProjection(graph).pages.map(p=>({key:p.key,wiki:p.wiki,page:p.path,title:p.head.title,type:p.head.type,id:p.head.id})),edges:graph.edges,findings:[...graph.failures,...graph.findings]};
@@ -175,11 +178,16 @@ async function executeAction(root,request,{bindings={},extract,editorHTML=null}=
  if(action==='document.move.apply')return applyMoves(store,args.id);
  if(action==='index'){const originals=await repairOriginalLinks(store,c.sources,{linkRoot:c.remote.root,author:args.author});return {...await content.refreshIndex(store),original_links:originals};}
  if(action==='workflow.start')return workflow.start(store,args.mode,args.pages,args.author,args);
- if(action==='workflow.review')return workflow.review(store,args.id,args.record,args.author);
+ const workflowResponse=result=>args.response==='summary'?workflow.summarize(store,result,{connection:c.connection.id,work:c.workFolder.id}):result;
+ if(action==='workflow.review')return workflowResponse(await workflow.review(store,args.id,args.record,args.author));
  if(action==='workflow.decide')return workflow.decide(store,args.id,args.decision,args.author);
- if(action==='workflow.finish')return workflow.finish(store,args.id,args.outputs,args.author,args);
- if(action==='workflow.status')return (await workflow.sessions(store)).find(s=>s.id===args.id)??workflow.status(store,args.id);
- if(action==='workflow.list')return workflow.sessions(store);
+ if(action==='workflow.finish')return workflowResponse(await workflow.finish(store,args.id,args.outputs,args.author,args));
+ if(action==='workflow.status'){
+  const result=(await workflow.sessions(store)).find(s=>s.id===args.id)??await workflow.status(store,args.id);
+  if(args.expected_review!==undefined)requireThat(await workflow.reviewDigest(store,result.review)===args.expected_review,'stale','The requested review changed. Read the current workflow status before fetching its details.',{id:args.id});
+  return workflowResponse(result);
+ }
+ if(action==='workflow.list')return Promise.all((await workflow.sessions(store)).map(workflowResponse));
  const options={work:handle(store),remote:handle(c.remote),identity:c.identity,canPublish:c.canPublish,...c.syncOptions,project:handle(root),connection:c.connection.id,ownerRemote:c.syncOptions.contributionMeta.owner.wiki?handle(c.syncOptions.contributionMeta.owner.wiki):null};
  if(action.startsWith('contribute.')){const operation=action.slice(11);if(operation==='takeover'&&c.syncOptions.scope==='full')return recipientTakeover(options,args);requireThat(c.syncOptions.scope==='contributions','contribution_connection_required','Select a contribution connection.');const method=contributions[operation]??contributionLifecycle[operation];requireThat(typeof method==='function','contribution_action_unavailable','This contribution action is unavailable.');return method(options,args);}
  if(action==='sync'){const result=await sync.run(options);await exportGraph(store);if(c.canPublish&&c.syncOptions.scope==='full')await exportGraph(c.remote);return result;}

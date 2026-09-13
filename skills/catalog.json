@@ -10,6 +10,7 @@
         "default_prompt": "Nutze $maintain-llm-wiki für mein LLM-Wiki."
       },
       "references": [
+        "ingest-run.md",
         "own-notes-and-images.md",
         "deep-ingest.md",
         "setup-handoff.md",

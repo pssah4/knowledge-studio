@@ -321,6 +321,38 @@ This closes the review with `resolved:true`, **not** `complete:true`; do not rep
 that these sources have been integrated. Never manufacture an insight to pass a
 validator. Appropriation still requires the actual user decision.
 
+For `workflow.review`, `workflow.finish`, `workflow.status`, `workflow.list` and
+`readiness`, optional `response:"summary"` omits only the repeated `review.record`
+from each returned session. Omit `response` or use `response:"full"` for the existing
+full response. These options change the returned representation after the same
+validation; they do not change saved reviews, source content or completion gates.
+`workflow.start` remains full and keeps all `topic_candidates`; it does not accept
+this option. This is separate from the triage-only `source.monitor report:"summary"`.
+
+A summarized review retains its original metadata, including policy, author, date,
+snapshots and historical `sha256`, and adds:
+
+- `record_omitted:true`;
+- `record_summary:{sources,insights,topic_pages}` (counts, or null for an unrecognized
+  legacy structure);
+- `detail_request:{action:"workflow.status",connection,work,id,response:"full",expected_review}`.
+
+Execute `detail_request` unchanged when the full assessment, quotes or insights are
+needed. Its `expected_review` is SHA-256 of the actual complete review JSON, including
+its metadata; do not substitute the historical `review.sha256`. A changed review
+returns `error.code:"stale"`. Re-read current status before fetching that different
+record. A matching digest binds the returned review, not the freshness of its source
+or output snapshots: always retain `next`, `outcome`, `complete` and `resolved` from
+the current result. `expected_review` is accepted only by full `workflow.status`.
+
+All other session fields remain full, including decisions, topic candidates,
+sources, outputs and supersession. Sessions without a review and malformed-session
+errors remain unchanged. Readiness retains every `blocked_by` entry, knowledge
+finding, original state, note result and publication difference; only records in
+`workflows[].sessions[]` are summarized. Finish retains its graph/shadow results and
+errors. Summary is not a size limit: findings and decisions are never cut to fit a
+budget, and it does not authorize skipping required source reading or review work.
+
 ## GraphRAG and maintenance
 
 `query` takes `question`, optional `connections` (explicit accessible wiki IDs),

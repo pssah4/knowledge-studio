@@ -1,4 +1,4 @@
-# LLM-Wiki 0.4.26 · Plattformpakete
+# LLM-Wiki 0.4.27 · Plattformpakete
 
 Installiere beide Skills für dieselbe Plattform und Version. Hinweise findest du in der [Projektanleitung](../../README.md).
 
@@ -14,4 +14,4 @@ Je Plattform beide Skills importieren und alte Fassungen ersetzen. Codex verwend
 
 Die Pakete bringen ihre JavaScript-Bibliotheken und den Editor mit. Es wird keine Software auf Nutzergeräten nachinstalliert. Hostrechte und verfügbare Ausführung müssen im Zielhost geprüft werden.
 
-[Dateien und SHA-256](release-0.4.26.json)
+[Dateien und SHA-256](release-0.4.27.json)

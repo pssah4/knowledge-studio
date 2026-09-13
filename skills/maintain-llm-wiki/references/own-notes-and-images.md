@@ -7,8 +7,10 @@ into a source filename convention. Preserve unknown properties, authors and link
 
 ## Required incremental loop
 
-1. Inspect/context all assigned wikis; run sync per connection BEFORE monitoring to
-   receive Obsidian changes. Resolve or report pending/conflicting files honestly.
+1. Inspect/context the requested connections, including wikis without sources; a
+   whole-project request includes all assigned wikis. Run sync for each BEFORE
+   monitoring to receive Obsidian changes. Resolve or report pending/conflicting
+   files honestly.
 2. source.monitor returns `pairs` for sources AND `notes` for each connection,
    including wikis with no sources. note.plan provides the same per-wiki result.
    `new`, `changed`, `dependency_changed`, `unreadable` are not completed integration.
@@ -26,9 +28,13 @@ into a source filename convention. Preserve unknown properties, authors and link
    `compared` lists actual read target pages with expected sha256, quote and reason.
    A linked review must have a valid typed edge to an evidenced comparison page.
    The review only records evidence; it does not perform LLM analysis itself.
-6. Check note.plan again, finish source workflows, index, sync all affected connections,
-   readiness and graph.refresh. Report outstanding own-note reviews as incomplete
-   even if source readiness is green. Never equate “graph rebuilt” with integration.
+6. Check note.plan again, finish source workflows, index, sync all affected connections
+   and check readiness. Reuse a current full graph.complete:true result from finish/sync
+   with no later changes. Otherwise inspect findings; external changes need a full
+   reconciliation through sync or graph.refresh. An informational link_outside_circle
+   is visible but not a blocker or a reason to repeat refresh. Report outstanding
+   own-note reviews as incomplete even if source readiness is green. Never equate
+   “graph rebuilt” with integration.
 
 Reviews are hash-bound under `.llmwiki/note-reviews/`. Derived navigation changes do
 not repeatedly invalidate an otherwise identical authored note. Compared content and
